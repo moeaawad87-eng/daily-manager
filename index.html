@@ -358,7 +358,7 @@ function renderList(el,key,title,sub){
       </div>`:''}
       ${items.length? items.map(x=>`<div class="row" data-search="${escapeHtml(x.title)}"><input type="checkbox" data-id="${x.id}" ${x.done?'checked':''}>
         <div class="txt"><b>${escapeHtml(x.title)}</b><div style="margin-top:6px">${tagHtml(x.tag)}${x.priority?tagHtml(x.priority):''}${x.recur?`<span class="tag reminder">↻ ${x.recur}</span>`:''}${x.project?`<span class="tag personal">${escapeHtml(x.project)}</span>`:''}</div>
-        ${x.customer && (x.customer.name||x.customer.phone||x.customer.location||x.customer.villa)?`<p style="margin:6px 0 0;color:var(--ink-soft);font-size:12.5px">${[x.customer.name&&`👤 ${escapeHtml(x.customer.name)}`,x.customer.phone&&`📞 ${escapeHtml(x.customer.phone)}`,x.customer.location&&`📍 ${escapeHtml(x.customer.location)}`,x.customer.villa&&`Villa ${escapeHtml(x.customer.villa)}`].filter(Boolean).join(' · ')}</p>`:''}</div>
+        ${x.customer && (x.customer.name||x.customer.phone||x.customer.location||x.customer.villa)?`<p style="margin:6px 0 0;color:var(--ink-soft);font-size:12.5px">${[x.customer.name&&`👤 ${escapeHtml(x.customer.name)}`,x.customer.phone&&`📞 ${escapeHtml(x.customer.phone)}`,x.customer.location&&`📍 ${escapeHtml(x.customer.location)}`,x.customer.villa&&`Villa ${escapeHtml(x.customer.villa)}`].filter(Boolean).join(' · ')} <button class="del" data-startsurvey="${x.id}">${x.surveyId?'open survey':'start survey'}</button></p>`:''}</div>
         <div class="meta">${fmtDate(x.due)} <button class="del" data-edit="${x.id}">edit</button> <button class="del" data-del="${x.id}">remove</button></div></div>`).join('')
         : '<div class="empty">Nothing here yet — add your first one above.</div>'}
     </div>`;
@@ -374,6 +374,18 @@ function renderList(el,key,title,sub){
     save(key); renderNav(); renderView();
   });
   el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ data[key]=items.filter(i=>i.id!=b.dataset.del); save(key); renderNav(); renderView(); });
+  el.querySelectorAll('[data-startsurvey]').forEach(b=>b.onclick=()=>{
+    const it = items.find(i=>i.id==b.dataset.startsurvey);
+    if(it.surveyId && data.surveys.find(s=>s.id===it.surveyId)){
+      currentSurveyId = it.surveyId;
+    } else {
+      const c = it.customer||{};
+      const s = {id:Date.now(),customer:c.name||it.title,phone:c.phone||'',city:c.location||'',villa:c.villa||'',date:it.due||todayISO(),sections:[]};
+      data.surveys.unshift(s); it.surveyId = s.id; save('surveys'); save(key);
+      currentSurveyId = s.id;
+    }
+    current='surveys'; renderNav(); renderView();
+  });
   el.querySelector('#addForm').onsubmit=(e)=>{
     e.preventDefault(); const f=new FormData(e.target);
     const cn=el.querySelector('#custName'), cp=el.querySelector('#custPhone'), cl=el.querySelector('#custLocation'), cv=el.querySelector('#custVilla');
