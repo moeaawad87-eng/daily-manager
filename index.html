@@ -257,7 +257,7 @@ function renderView(){
   const el = document.getElementById('view');
   if(current==='today') return renderToday(el);
   if(current==='calendar') return renderCalendar(el);
-  if(current==='tasks') return renderList(el,'tasks','Tasks','What needs doing');
+  if(current==='tasks') return currentTaskId ? renderTaskDetail(el) : renderList(el,'tasks','Tasks','What needs doing');
   if(current==='followups') return renderList(el,'followups','Follow-ups','People and things to chase');
   if(current==='projects') return renderProjects(el);
   if(current==='notes') return renderNotes(el);
@@ -357,7 +357,7 @@ function renderList(el,key,title,sub){
         </div>
       </div>`:''}
       ${items.length? items.map(x=>`<div class="row" data-search="${escapeHtml(x.title)}"><input type="checkbox" data-id="${x.id}" ${x.done?'checked':''}>
-        <div class="txt"><b>${escapeHtml(x.title)}</b><div style="margin-top:6px">${tagHtml(x.tag)}${x.priority?tagHtml(x.priority):''}${x.recur?`<span class="tag reminder">↻ ${x.recur}</span>`:''}${x.project?`<span class="tag personal">${escapeHtml(x.project)}</span>`:''}</div>
+        <div class="txt"><b${key==='tasks'?` data-opentask="${x.id}" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--line)"`:''}>${escapeHtml(x.title)}</b><div style="margin-top:6px">${tagHtml(x.tag)}${x.priority?tagHtml(x.priority):''}${x.recur?`<span class="tag reminder">↻ ${x.recur}</span>`:''}${x.project?`<span class="tag personal">${escapeHtml(x.project)}</span>`:''}</div>
         ${x.customer && (x.customer.name||x.customer.phone||x.customer.location||x.customer.villa)?`<p style="margin:6px 0 0;color:var(--ink-soft);font-size:12.5px">${[x.customer.name&&`👤 ${escapeHtml(x.customer.name)}`,x.customer.phone&&`📞 ${escapeHtml(x.customer.phone)}`,x.customer.location&&`📍 ${escapeHtml(x.customer.location)}`,x.customer.villa&&`Villa ${escapeHtml(x.customer.villa)}`].filter(Boolean).join(' · ')} <button class="del" data-startsurvey="${x.id}">${x.surveyId?'open survey':'start survey'}</button></p>`:''}</div>
         <div class="meta">${fmtDate(x.due)} <button class="del" data-edit="${x.id}">edit</button> <button class="del" data-del="${x.id}">remove</button></div></div>`).join('')
         : '<div class="empty">Nothing here yet — add your first one above.</div>'}
@@ -374,6 +374,7 @@ function renderList(el,key,title,sub){
     save(key); renderNav(); renderView();
   });
   el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ data[key]=items.filter(i=>i.id!=b.dataset.del); save(key); renderNav(); renderView(); });
+  if(key==='tasks') el.querySelectorAll('[data-opentask]').forEach(b=>b.onclick=()=>{ currentTaskId=b.dataset.opentask; renderView(); });
   el.querySelectorAll('[data-startsurvey]').forEach(b=>b.onclick=()=>{
     const it = items.find(i=>i.id==b.dataset.startsurvey);
     if(it.surveyId && data.surveys.find(s=>s.id===it.surveyId)){
@@ -492,6 +493,50 @@ function renderSchedule(el){
     e.preventDefault(); const f=new FormData(e.target);
     data.schedule.push({id:Date.now(),title:f.get('title'),date:f.get('date'),start:f.get('start'),end:f.get('end')||''});
     save('schedule'); e.target.reset(); renderView();
+  };
+}
+
+let currentTaskId = null;
+function renderTaskDetail(el){
+  const it = data.tasks.find(x=>x.id==currentTaskId);
+  if(!it){ currentTaskId=null; return renderList(el,'tasks','Tasks','What needs doing'); }
+  const c = it.customer||{};
+  el.innerHTML = `<button class="backlink" id="backBtn">← All tasks</button>
+    <div class="eyebrow">TASK</div><h1 class="title">${escapeHtml(it.title)}</h1>
+    <div class="sub">${[fmtDate(it.due),it.tag,it.priority,it.project].filter(Boolean).join(' · ')}</div>
+    <div class="panel">
+      <h2>Customer details</h2>
+      <form id="custForm" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <input type="text" name="name" placeholder="Name" value="${escapeHtml(c.name||'')}" style="flex:1;min-width:130px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="phone" placeholder="Phone" value="${escapeHtml(c.phone||'')}" style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="location" placeholder="Location" value="${escapeHtml(c.location||'')}" style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="villa" placeholder="Villa #" value="${escapeHtml(c.villa||'')}" style="flex:1;min-width:90px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Save</button>
+      </form>
+    </div>
+    <div class="panel">
+      <button class="addbtn" id="surveyBtn">${it.surveyId?'Open site survey':'Start site survey'}</button>
+      <button class="del" id="markDone" style="margin-left:14px">${it.done?'Mark not done':'Mark done'}</button>
+      <button class="del" id="delTask" style="margin-left:14px">Remove task</button>
+    </div>`;
+  el.querySelector('#backBtn').onclick=()=>{ currentTaskId=null; renderView(); };
+  el.querySelector('#custForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    it.customer = {name:f.get('name'),phone:f.get('phone'),location:f.get('location'),villa:f.get('villa')};
+    save('tasks'); renderView();
+  };
+  el.querySelector('#markDone').onclick=()=>{ it.done=!it.done; save('tasks'); renderNav(); renderView(); };
+  el.querySelector('#delTask').onclick=()=>{ data.tasks=data.tasks.filter(t=>t.id!=it.id); save('tasks'); currentTaskId=null; renderNav(); renderView(); };
+  el.querySelector('#surveyBtn').onclick=()=>{
+    if(it.surveyId && data.surveys.find(s=>s.id===it.surveyId)){
+      currentSurveyId = it.surveyId;
+    } else {
+      const cc = it.customer||{};
+      const s = {id:Date.now(),customer:cc.name||it.title,phone:cc.phone||'',city:cc.location||'',villa:cc.villa||'',date:it.due||todayISO(),sections:[]};
+      data.surveys.unshift(s); it.surveyId = s.id; save('surveys'); save('tasks');
+      currentSurveyId = s.id;
+    }
+    currentTaskId = null; current='surveys'; renderNav(); renderView();
   };
 }
 
