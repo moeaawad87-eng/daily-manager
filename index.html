@@ -454,7 +454,14 @@ function renderSchedule(el){
 
 function renderSettings(el){
   const hasPin = !!store.get('pin','');
+  const notifSupported = 'Notification' in window;
+  const notifPerm = notifSupported ? Notification.permission : 'unsupported';
   el.innerHTML = `<div class="eyebrow">SETTINGS</div><h1 class="title">Settings</h1><div class="sub">Background, backup, and privacy</div>
+    <div class="panel">
+      <h2>Desktop notifications</h2>
+      <div class="count">${!notifSupported?'Not supported in this browser.':notifPerm==='granted'?'Enabled — you\\u2019ll get a notification when something is overdue or due today, while this tab is open.':notifPerm==='denied'?'Blocked by the browser. Click the lock/info icon in the address bar \\u2192 Notifications \\u2192 Allow, then reload.':'Not enabled yet.'}</div>
+      ${notifSupported && notifPerm==='default'?'<button class="addbtn" id="enableNotif">Enable notifications</button>':''}
+    </div>
     <div class="panel">
       <h2>Background photos</h2>
       <div class="count">A faint photo rotates behind your pages, changing each hour</div>
@@ -501,6 +508,7 @@ function renderSettings(el){
     if(p && /^\d{4,6}$/.test(p)){ store.set('pin', p); renderView(); } else if(p){ alert('PIN must be 4–6 digits.'); }
   };
   const rp = el.querySelector('#removePin'); if(rp) rp.onclick=()=>{ localStorage.removeItem('mdm_pin'); renderView(); };
+  const nb = el.querySelector('#enableNotif'); if(nb) nb.onclick=()=>{ Notification.requestPermission().then(()=>{ renderView(); checkNotify(); }); };
 }
 
 document.getElementById('quickAddBtn').onclick=()=>{ current='tasks'; renderNav(); renderView(); document.querySelector('#addForm input[type=text]')?.focus(); };
@@ -535,6 +543,20 @@ renderNav();
 renderView();
 applyBackground();
 initCloud();
+function checkNotify(){
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  const t = todayISO();
+  const overdue = data.tasks.filter(x=>!x.done && x.due && x.due<t).length;
+  const dueToday = data.tasks.filter(x=>!x.done && x.due===t).length;
+  if(overdue===0 && dueToday===0) return;
+  const sig = `${overdue}-${dueToday}-${t}`;
+  if(store.get('notifSig','')===sig) return;
+  store.set('notifSig', sig);
+  const parts=[]; if(overdue) parts.push(`${overdue} overdue`); if(dueToday) parts.push(`${dueToday} due today`);
+  try{ new Notification('Daily Manager', {body: parts.join(' · ')}); }catch(e){}
+}
+checkNotify();
+setInterval(checkNotify, 15*60*1000);
 (function checkLock(){
   const pin = store.get('pin','');
   if(!pin) return;
