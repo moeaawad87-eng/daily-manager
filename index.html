@@ -459,7 +459,7 @@ function renderSettings(el){
   el.innerHTML = `<div class="eyebrow">SETTINGS</div><h1 class="title">Settings</h1><div class="sub">Background, backup, and privacy</div>
     <div class="panel">
       <h2>Desktop notifications</h2>
-      <div class="count">${!notifSupported?'Not supported in this browser.':notifPerm==='granted'?'Enabled — you\\u2019ll get a notification when something is overdue or due today, while this tab is open.':notifPerm==='denied'?'Blocked by the browser. Click the lock/info icon in the address bar \\u2192 Notifications \\u2192 Allow, then reload.':'Not enabled yet.'}</div>
+      <div class="count">${!notifSupported?'Not supported in this browser.':notifPerm==='granted'?"Enabled — you'll get a notification when something is overdue or due today, while this tab is open.":notifPerm==='denied'?'Blocked by the browser. Click the lock/info icon in the address bar → Notifications → Allow, then reload.':'Not enabled yet.'}</div>
       ${notifSupported && notifPerm==='default'?'<button class="addbtn" id="enableNotif">Enable notifications</button>':''}
     </div>
     <div class="panel">
