@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <style>
 :root{
   --forest:#123B2E; --forest-deep:#0C2A21; --cream:#FAF8F3; --paper:#FFFFFF;
@@ -172,6 +173,10 @@ function queueCloudSync(){
 let syncStatus = 'checking';
 async function initCloud(){
   try{
+    await new Promise((resolve,reject)=>{
+      firebase.auth().signInAnonymously().catch(reject);
+      firebase.auth().onAuthStateChanged(u=>{ if(u) resolve(); });
+    });
     const snap = await fsdoc.get();
     if(snap.exists){
       const remote = snap.data() || {};
