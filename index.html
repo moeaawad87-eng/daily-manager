@@ -121,9 +121,8 @@ main.has-bg>*{position:relative;z-index:1}
   .side, .topbar, .backlink, form, .del, .addbtn, .mic{display:none !important}
   main{padding:0 !important}
   body{background:#fff}
-  .panel,.survcard{border:none !important;box-shadow:none !important}
-  .sectiongrid{grid-template-columns:1fr 1fr;page-break-inside:avoid}
-  .sectioncard{border:1px solid #ccc !important;break-inside:avoid}
+  .panel{border:none !important;box-shadow:none !important;padding:8px 0 !important}
+  .photoitem{break-inside:avoid;border-top:1px solid #ccc !important}
 }
 @media(max-width:820px){
   .app{flex-direction:column}
@@ -490,18 +489,21 @@ function renderSurveys(el){
   const items = [...data.surveys].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   el.innerHTML = `<div class="eyebrow">SITE SURVEYS</div><h1 class="title">Site Surveys</h1><div class="sub">Measurements, photos and customer needs per garden area — for building the BOQ later</div>
     <div class="panel">
-      <form class="inline" id="addForm">
-        <input type="text" name="title" placeholder="Site / customer name…" required>
-        <input type="date" name="date" value="${todayISO()}">
-        <button type="submit">Start survey</button>
+      <form id="addForm" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <input type="text" name="customer" placeholder="Customer name" required style="flex:1;min-width:130px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="phone" placeholder="Phone number" style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="city" placeholder="City" style="flex:1;min-width:100px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="villa" placeholder="Villa number" style="flex:1;min-width:100px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="date" name="date" value="${todayISO()}" style="padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Start survey</button>
       </form>
-      ${items.length? items.map(s=>`<div class="survcard" data-open="${s.id}"><b>${escapeHtml(s.title)}</b><p style="margin:4px 0 0;color:var(--ink-soft);font-size:12.8px">${fmtDate(s.date)} · ${(s.sections||[]).length} area${(s.sections||[]).length===1?'':'s'} recorded</p></div>`).join('')
+      ${items.length? items.map(s=>`<div class="survcard" data-open="${s.id}"><b>${escapeHtml(s.customer||'Untitled')}</b><p style="margin:4px 0 0;color:var(--ink-soft);font-size:12.8px">${[s.villa&&`Villa ${escapeHtml(s.villa)}`,s.city&&escapeHtml(s.city),s.phone&&escapeHtml(s.phone)].filter(Boolean).join(' · ')} — ${fmtDate(s.date)} · ${(s.sections||[]).length} area${(s.sections||[]).length===1?'':'s'}</p></div>`).join('')
         : '<div class="empty">No surveys yet — start one above before your next site visit.</div>'}
     </div>`;
   el.querySelectorAll('[data-open]').forEach(c=>c.onclick=()=>{ currentSurveyId=c.dataset.open; renderView(); });
   el.querySelector('#addForm').onsubmit=(e)=>{
     e.preventDefault(); const f=new FormData(e.target);
-    const s={id:Date.now(),title:f.get('title'),date:f.get('date'),sections:[]};
+    const s={id:Date.now(),customer:f.get('customer'),phone:f.get('phone'),city:f.get('city'),villa:f.get('villa'),date:f.get('date'),sections:[]};
     data.surveys.unshift(s); save('surveys'); currentSurveyId=s.id; renderView();
   };
 }
@@ -509,38 +511,66 @@ function renderSurveyDetail(el){
   const s = data.surveys.find(x=>x.id==currentSurveyId);
   if(!s){ currentSurveyId=null; return renderSurveys(el); }
   el.innerHTML = `<button class="backlink" id="backBtn">← All surveys</button>
-    <div class="eyebrow">SITE SURVEY</div><h1 class="title">${escapeHtml(s.title)}</h1><div class="sub">${fmtDate(s.date)}</div>
+    <div class="eyebrow">SITE SURVEY</div><h1 class="title">${escapeHtml(s.customer||'Untitled')}</h1>
+    <div class="sub">${[s.villa&&`Villa ${escapeHtml(s.villa)}`,s.city&&escapeHtml(s.city),s.phone&&escapeHtml(s.phone),fmtDate(s.date)].filter(Boolean).join(' · ')} <button class="del" id="editSurvey">edit details</button></div>
     <div class="panel">
       <button class="addbtn" id="printBtn" style="margin-bottom:14px">🖨 Print this survey</button>
-      <form class="inline" id="addSection" style="align-items:flex-start;flex-wrap:wrap">
+      <form class="inline" id="addSection">
         <input type="text" name="name" placeholder="Area name (e.g. Front Garden)…" required>
-        <label class="filebtn" style="cursor:pointer">📷 Photo<input type="file" name="photo" accept="image/*" style="display:none"></label>
+        <input type="text" name="measurements" placeholder="Measurements (e.g. 12m x 8m)">
         <button type="submit">Add area</button>
       </form>
-      <textarea id="newMeas" placeholder="Measurements (e.g. 12m x 8m, slope, soil type)…" rows="2" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink);margin-bottom:8px"></textarea>
-      <textarea id="newNeeds" placeholder="Customer needs for this area…" rows="2" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)"></textarea>
-      <div class="sectiongrid">${(s.sections||[]).map(sec=>`<div class="sectioncard">${sec.photo?`<img src="${sec.photo}">`:''}<div class="sc-body"><b>${escapeHtml(sec.name)}</b>
-        ${sec.measurements?`<span class="lbl">Measurements</span><p>${escapeHtml(sec.measurements)}</p>`:''}
-        ${sec.needs?`<span class="lbl">Customer needs</span><p>${escapeHtml(sec.needs)}</p>`:''}
-        <p style="margin-top:10px"><button class="del" data-delsec="${sec.id}">remove area</button></p>
-      </div></div>`).join('') || ''}</div>
+      ${(s.sections||[]).map(sec=>`<div class="panel" data-sec="${sec.id}" style="background:var(--cream)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start"><div><b>${escapeHtml(sec.name)}</b>${sec.measurements?` <span style="color:var(--ink-soft);font-size:12.8px">— ${escapeHtml(sec.measurements)}</span>`:''}</div><button class="del" data-delsec="${sec.id}">remove area</button></div>
+        ${(sec.photos||[]).map(p=>`<div class="photoitem" style="display:flex;gap:12px;border-top:1px solid var(--line);padding:12px 0">
+          <img src="${p.image}" style="width:140px;height:100px;object-fit:cover;border-radius:6px;flex:none">
+          <div style="flex:1"><p style="margin:0;font-size:13px;white-space:pre-wrap">${escapeHtml(p.explanation||'')}</p></div>
+          <button class="del" data-delphoto="${sec.id}:${p.id}" style="align-self:flex-start">remove</button>
+        </div>`).join('')}
+        <form class="addphoto" data-secid="${sec.id}" style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <label class="filebtn" style="cursor:pointer">📷 Add photo<input type="file" accept="image/*" required style="display:none"></label>
+          <input type="text" placeholder="Explanation / customer need for this photo…" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+          <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 14px;font-weight:600;font-size:13px">Add</button>
+        </form>
+      </div>`).join('') || '<div class="empty">No areas yet — add one above.</div>'}
     </div>`;
   el.querySelector('#backBtn').onclick=()=>{ currentSurveyId=null; renderView(); };
   el.querySelector('#printBtn').onclick=()=>window.print();
+  el.querySelector('#editSurvey').onclick=()=>{
+    const customer=prompt('Customer name:', s.customer||''); if(customer===null) return;
+    const phone=prompt('Phone number:', s.phone||'');
+    const city=prompt('City:', s.city||'');
+    const villa=prompt('Villa number:', s.villa||'');
+    s.customer=customer; s.phone=phone; s.city=city; s.villa=villa; save('surveys'); renderView();
+  };
   el.querySelectorAll('[data-delsec]').forEach(b=>b.onclick=()=>{
     s.sections = s.sections.filter(sec=>sec.id!=b.dataset.delsec); save('surveys'); renderView();
   });
+  el.querySelectorAll('[data-delphoto]').forEach(b=>b.onclick=()=>{
+    const [secId,photoId] = b.dataset.delphoto.split(':');
+    const sec = s.sections.find(x=>x.id==secId);
+    sec.photos = (sec.photos||[]).filter(p=>p.id!=photoId);
+    save('surveys'); renderView();
+  });
   el.querySelector('#addSection').onsubmit=(e)=>{
-    e.preventDefault(); const f=new FormData(e.target); const file=f.get('photo');
-    const meas = el.querySelector('#newMeas').value, needs = el.querySelector('#newNeeds').value;
-    const push=(photo)=>{
-      s.sections = s.sections||[];
-      s.sections.push({id:Date.now(),name:f.get('name'),photo:photo||'',measurements:meas,needs:needs});
-      save('surveys'); renderView();
-    };
-    if(file && file.size){ const r=new FileReader(); r.onload=()=>push(r.result); r.readAsDataURL(file); }
-    else push('');
+    e.preventDefault(); const f=new FormData(e.target);
+    s.sections = s.sections||[];
+    s.sections.push({id:Date.now(),name:f.get('name'),measurements:f.get('measurements')||'',photos:[]});
+    save('surveys'); renderView();
   };
+  el.querySelectorAll('form.addphoto').forEach(form=>{
+    form.onsubmit=(e)=>{
+      e.preventDefault();
+      const secId = form.dataset.secid;
+      const sec = s.sections.find(x=>x.id==secId);
+      const file = form.querySelector('input[type=file]').files[0];
+      const explanation = form.querySelector('input[type=text]').value;
+      if(!file) return;
+      const r=new FileReader();
+      r.onload=()=>{ sec.photos=sec.photos||[]; sec.photos.push({id:Date.now(),image:r.result,explanation}); save('surveys'); renderView(); };
+      r.readAsDataURL(file);
+    };
+  });
 }
 
 function renderSettings(el){
