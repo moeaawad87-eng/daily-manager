@@ -343,6 +343,45 @@ function rowHtml(x){
 }
 function toggleTask(id){ const t=data.tasks.find(x=>x.id===id); if(t){ t.done=!t.done; save('tasks'); renderView(); } }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function icsEscape(s){ return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n'); }
+function icsDateTime(dateISO, time){
+  const d = dateISO.replace(/-/g,'');
+  if(time){ return `${d}T${time.replace(':','')}00`; }
+  return d;
+}
+function generateICS(){
+  const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Mohamad Daily Manager//EN','CALSCALE:GREGORIAN'];
+  const stamp = new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
+  const addEvent = (uid, dateISO, time, summary, description)=>{
+    if(!dateISO) return;
+    lines.push('BEGIN:VEVENT');
+    lines.push('UID:'+uid+'@dailymanager.moeaawad87');
+    lines.push('DTSTAMP:'+stamp);
+    if(time){
+      lines.push('DTSTART:'+icsDateTime(dateISO,time));
+      let [hh,mm] = time.split(':').map(Number);
+      hh = (hh+1)%24;
+      const endTime = String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+      lines.push('DTEND:'+icsDateTime(dateISO,endTime));
+    } else {
+      lines.push('DTSTART;VALUE=DATE:'+icsDateTime(dateISO,''));
+      const d=new Date(dateISO+'T00:00:00'); d.setDate(d.getDate()+1);
+      const endDate = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+      lines.push('DTEND;VALUE=DATE:'+endDate);
+    }
+    lines.push('SUMMARY:'+icsEscape(summary));
+    if(description) lines.push('DESCRIPTION:'+icsEscape(description));
+    lines.push('END:VEVENT');
+  };
+  data.tasks.filter(t=>t.due && !t.done).forEach(t=>{
+    const c = t.customer||{};
+    const desc = [c.name&&`Customer: ${c.name}`, c.phone&&`Phone: ${c.phone}`, c.location&&`Location: ${c.location}`, c.villa&&`Villa: ${c.villa}`, t.note].filter(Boolean).join('\n');
+    addEvent('task-'+t.id, t.due, t.visitTime||'', t.title, desc);
+  });
+  data.schedule.forEach(s=>{ addEvent('sched-'+s.id, s.date, s.start||'', s.title, ''); });
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
 function mapsLink(loc){
   if(!loc) return '';
   if(/^https?:\/\//i.test(loc)) return loc;
@@ -574,21 +613,39 @@ function renderExpenses(el){
   };
 }
 
+function dayItems(iso){
+  const list = [];
+  data.tasks.filter(t=>t.due===iso).forEach(t=>list.push({type:'task',time:t.visitTime||'',title:t.title,ref:t}));
+  data.schedule.filter(s=>s.date===iso).forEach(s=>list.push({type:'schedule',time:s.start||'',title:s.title,ref:s}));
+  data.surveys.filter(s=>s.date===iso).forEach(s=>list.push({type:'survey',time:'',title:`Site survey — ${s.customer||'Untitled'}`,ref:s}));
+  list.sort((a,b)=>(a.time||'99:99').localeCompare(b.time||'99:99'));
+  return list;
+}
+let selectedCalDate = todayISO();
 function renderCalendar(el){
   const now = new Date(); const y=now.getFullYear(), m=now.getMonth();
   const first = new Date(y,m,1); const startDow=(first.getDay()+6)%7; // Mon start
   const daysInMonth = new Date(y,m+1,0).getDate();
-  const items = [...data.tasks].filter(t=>t.due);
   let cells='';
   for(let i=0;i<startDow;i++) cells+=`<div class="d out"></div>`;
   for(let d=1; d<=daysInMonth; d++){
     const iso = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const has = items.some(t=>t.due===iso);
+    const dItems = dayItems(iso);
     const isToday = iso===todayISO();
-    cells += `<div class="d${isToday?' today':''}">${d}${has?'<div class="dot"></div>':''}</div>`;
+    const isSel = iso===selectedCalDate;
+    cells += `<div class="d${isToday?' today':''}${isSel?' sel':''}" data-day="${iso}" style="cursor:pointer;${isSel?'outline:2px solid var(--forest);border-radius:8px':''}">${d}${dItems.length?`<div class="dot"></div>`:''}</div>`;
   }
-  el.innerHTML = `<div class="eyebrow">CALENDAR</div><h1 class="title">${now.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</h1><div class="sub">Tasks with a due date, at a glance</div>
-    <div class="panel"><div class="calgrid">${cells}</div></div>`;
+  const selItems = dayItems(selectedCalDate);
+  const selLabel = new Date(selectedCalDate+'T00:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+  const typeIcon = {task:'☑',schedule:'⏰',survey:'📐'};
+  el.innerHTML = `<div class="eyebrow">CALENDAR</div><h1 class="title">${now.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</h1><div class="sub">Tap any day to see what's on it</div>
+    <div class="panel"><div class="calgrid">${cells}</div></div>
+    <div class="panel">
+      <h2>${selLabel}</h2>
+      <div class="count">${selItems.length} item${selItems.length===1?'':'s'}</div>
+      ${selItems.length? selItems.map(it=>`<div class="row"><div class="txt"><b>${typeIcon[it.type]} ${escapeHtml(it.title)}</b></div><div class="meta">${it.time||''}</div></div>`).join('') : '<div class="empty">Nothing on this day.</div>'}
+    </div>`;
+  el.querySelectorAll('[data-day]').forEach(c=>c.onclick=()=>{ selectedCalDate=c.dataset.day; renderView(); });
 }
 
 function renderSchedule(el){
@@ -840,6 +897,11 @@ function renderSettings(el){
       <label class="filebtn" style="cursor:pointer">Restore from file<input type="file" id="importFile" accept="application/json" style="display:none"></label>
     </div>
     <div class="panel">
+      <h2>Add to iPhone / Google Calendar</h2>
+      <div class="count">Downloads a calendar file with your tasks and meetings that have a date. Open it on your iPhone to add them straight into Apple Calendar, or import it into Google Calendar (calendar.google.com → Settings → Import) — from there, reminders and alerts work using your phone's own notifications, even when this app is closed. Note: this is a one-time snapshot — run it again whenever you want your phone calendar updated with new items.</div>
+      <button class="addbtn" id="icsBtn">Download calendar file (.ics)</button>
+    </div>
+    <div class="panel">
       <h2>PIN lock</h2>
       <div class="count">${hasPin?'A PIN is set on this device.':'No PIN set — anyone with this link can open the app.'}</div>
       <form class="inline" id="pinForm"><input type="text" inputmode="numeric" maxlength="6" name="pin" placeholder="New 4–6 digit PIN"><button type="submit">${hasPin?'Change PIN':'Set PIN'}</button>${hasPin?'<button type="button" class="del" id="removePin">Remove PIN</button>':''}</form>
@@ -856,6 +918,9 @@ function renderSettings(el){
   el.querySelector('#exportBtn').onclick=()=>{
     const payload = JSON.stringify(data, null, 2);
     const a=document.createElement('a'); a.href='data:application/json,'+encodeURIComponent(payload); a.download='daily-manager-backup.json'; a.click();
+  };
+  el.querySelector('#icsBtn').onclick=()=>{
+    const a=document.createElement('a'); a.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(generateICS()); a.download='daily-manager.ics'; a.click();
   };
   el.querySelector('#importFile').onchange=(e)=>{
     const file=e.target.files[0]; if(!file) return;
