@@ -343,6 +343,8 @@ function renderList(el,key,title,sub){
         <select name="tag"><option value="work">Work</option><option value="personal">Personal</option></select>
         <select name="priority"><option value="">Normal</option><option value="high">High</option><option value="reminder">Reminder</option></select>
         <input type="date" name="due">
+        ${showRecur?`<input type="time" name="visitTime" title="Visit time (optional)">`:''}
+        ${showRecur?`<select name="remindBefore"><option value="">No reminder</option><option value="0">Remind at the time</option><option value="30">30 min before</option><option value="60">1 hour before</option><option value="180">3 hours before</option><option value="1440">1 day before</option><option value="2880">2 days before</option></select>`:''}
         ${showRecur?`<select name="recur"><option value="">Doesn't repeat</option><option value="daily">Repeats daily</option><option value="weekly">Repeats weekly</option><option value="monthly">Repeats monthly</option></select>`:''}
         ${showRecur?`<select name="project"><option value="">No project</option>${data.projects.map(p=>`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('')}</select>`:''}
         <button type="submit">Add</button>
@@ -391,7 +393,7 @@ function renderList(el,key,title,sub){
     e.preventDefault(); const f=new FormData(e.target);
     const cn=el.querySelector('#custName'), cp=el.querySelector('#custPhone'), cl=el.querySelector('#custLocation'), cv=el.querySelector('#custVilla');
     const customer = (cn&&(cn.value||cp.value||cl.value||cv.value)) ? {name:cn.value,phone:cp.value,location:cl.value,villa:cv.value} : null;
-    items.push({id:Date.now(),title:f.get('title'),tag:f.get('tag'),priority:f.get('priority'),due:f.get('due'),recur:f.get('recur')||'',project:f.get('project')||'',customer,done:false});
+    items.push({id:Date.now(),title:f.get('title'),tag:f.get('tag'),priority:f.get('priority'),due:f.get('due'),recur:f.get('recur')||'',project:f.get('project')||'',customer,visitTime:f.get('visitTime')||'',remindBefore:f.get('remindBefore')||'',done:false});
     save(key); e.target.reset(); renderNav(); renderView();
   };
 }
@@ -440,15 +442,67 @@ function renderNotes(el){
   };
 }
 
+function dataURLtoBlob(dataURL){
+  const [meta, b64] = dataURL.split(',');
+  const mime = meta.match(/:(.*?);/)[1];
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return new Blob([arr], {type: mime});
+}
+function viewReceipt(dataUrl){
+  try{
+    const blob = dataURLtoBlob(dataUrl);
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  }catch(e){ window.open(dataUrl, '_blank'); }
+}
+
+let expenseTab = 'work';
 function renderExpenses(el){
-  const total = data.expenses.reduce((s,e)=>s+Number(e.amount||0),0);
-  el.innerHTML = `<div class="eyebrow">EXPENSES</div><h1 class="title">Expenses</h1><div class="sub">AED ${total} logged</div>
+  const list = data.expenses.filter(x=>(x.category||'work')===expenseTab);
+  const total = list.reduce((s,e)=>s+Number(e.amount||0),0);
+  const workTotal = data.expenses.filter(x=>(x.category||'work')==='work').reduce((s,e)=>s+Number(e.amount||0),0);
+  const personalTotal = data.expenses.filter(x=>x.category==='personal').reduce((s,e)=>s+Number(e.amount||0),0);
+  el.innerHTML = `<div class="eyebrow">EXPENSES</div><h1 class="title">Expenses</h1><div class="sub">Work and personal spending, kept separate, with receipts attached</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button data-tab="work" style="border:1px solid var(--line);background:${expenseTab==='work'?'var(--forest)':'var(--paper)'};color:${expenseTab==='work'?'#fff':'var(--ink)'};border-radius:7px;padding:8px 16px;font-size:13px;font-weight:600">Work · AED ${workTotal.toFixed(2)}</button>
+      <button data-tab="personal" style="border:1px solid var(--line);background:${expenseTab==='personal'?'var(--forest)':'var(--paper)'};color:${expenseTab==='personal'?'#fff':'var(--ink)'};border-radius:7px;padding:8px 16px;font-size:13px;font-weight:600">Personal · AED ${personalTotal.toFixed(2)}</button>
+    </div>
     <div class="panel">
-      <form class="inline" id="addForm"><input type="text" name="label" placeholder="What for…" required><input type="number" name="amount" placeholder="AED" step="0.01" required><button type="submit">Add</button></form>
-      ${data.expenses.length? data.expenses.map(x=>`<div class="row"><div class="txt"><b>${escapeHtml(x.label)}</b></div><div class="meta">AED ${x.amount} <button class="del" data-del="${x.id}">remove</button></div></div>`).join('') : '<div class="empty">No expenses logged yet.</div>'}
+      <h2>${expenseTab==='work'?'Work':'Personal'} — AED ${total.toFixed(2)}</h2>
+      <div class="count">${list.length} receipt${list.length===1?'':'s'}</div>
+      <form id="addForm" style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">
+        <input type="text" name="label" placeholder="What for…" required style="flex:1;min-width:140px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="number" name="amount" placeholder="AED" step="0.01" required style="width:100px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <label class="filebtn" style="cursor:pointer">📷 Add receipt<input type="file" id="receiptFile" accept="image/*,application/pdf" capture="environment" style="display:none"></label>
+        <span id="receiptName" style="font-size:12.5px;color:var(--ink-soft);align-self:center"></span>
+        <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Add</button>
+      </form>
+      ${list.length? list.map(x=>`<div class="row"><div style="display:flex;gap:12px;align-items:center;flex:1">
+        ${x.receipt?(x.receipt.type==='application/pdf'?`<button class="del" data-viewreceipt="${x.id}" style="width:48px;height:48px;flex:none;border:1px solid var(--line);border-radius:6px;background:var(--cream)">📄</button>`:`<img src="${x.receipt.dataUrl}" data-viewreceipt="${x.id}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex:none;cursor:pointer">`):''}
+        <div class="txt"><b>${escapeHtml(x.label)}</b></div></div>
+        <div class="meta">AED ${x.amount} <button class="del" data-del="${x.id}">remove</button></div></div>`).join('') : '<div class="empty">No receipts logged yet.</div>'}
     </div>`;
+  el.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{ expenseTab=b.dataset.tab; renderView(); });
+  let pendingReceipt = null;
+  const rf = el.querySelector('#receiptFile');
+  rf.onchange=()=>{
+    const file = rf.files[0]; if(!file) return;
+    const r = new FileReader();
+    r.onload=()=>{ pendingReceipt = {dataUrl:r.result, type:file.type, name:file.name}; el.querySelector('#receiptName').textContent = file.name; };
+    r.readAsDataURL(file);
+  };
+  el.querySelectorAll('[data-viewreceipt]').forEach(b=>b.onclick=()=>{
+    const x = data.expenses.find(e=>e.id==b.dataset.viewreceipt);
+    if(x && x.receipt) viewReceipt(x.receipt.dataUrl);
+  });
   el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ data.expenses=data.expenses.filter(x=>x.id!=b.dataset.del); save('expenses'); renderView(); });
-  el.querySelector('#addForm').onsubmit=(e)=>{ e.preventDefault(); const f=new FormData(e.target); data.expenses.push({id:Date.now(),label:f.get('label'),amount:f.get('amount')}); save('expenses'); e.target.reset(); renderView(); };
+  el.querySelector('#addForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    data.expenses.push({id:Date.now(),label:f.get('label'),amount:f.get('amount'),category:expenseTab,receipt:pendingReceipt});
+    save('expenses'); e.target.reset(); renderView();
+  };
 }
 
 function renderCalendar(el){
@@ -515,6 +569,24 @@ function renderTaskDetail(el){
       </form>
     </div>
     <div class="panel">
+      <h2>Visit reminder</h2>
+      <form id="remindForm" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+        <input type="date" name="due" value="${it.due||''}" style="padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="time" name="visitTime" value="${it.visitTime||''}" style="padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <select name="remindBefore" style="padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+          <option value="" ${!it.remindBefore?'selected':''}>No reminder</option>
+          <option value="0" ${it.remindBefore==='0'?'selected':''}>Remind at the time</option>
+          <option value="30" ${it.remindBefore==='30'?'selected':''}>30 min before</option>
+          <option value="60" ${it.remindBefore==='60'?'selected':''}>1 hour before</option>
+          <option value="180" ${it.remindBefore==='180'?'selected':''}>3 hours before</option>
+          <option value="1440" ${it.remindBefore==='1440'?'selected':''}>1 day before</option>
+          <option value="2880" ${it.remindBefore==='2880'?'selected':''}>2 days before</option>
+        </select>
+        <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Save</button>
+      </form>
+      ${it.remindBefore?`<p style="margin:8px 0 0;color:var(--ink-soft);font-size:12.8px">You'll be notified while the app is open, on this device.</p>`:''}
+    </div>
+    <div class="panel">
       <button class="addbtn" id="surveyBtn">${it.surveyId?'Open site survey':'Start site survey'}</button>
       <button class="del" id="markDone" style="margin-left:14px">${it.done?'Mark not done':'Mark done'}</button>
       <button class="del" id="delTask" style="margin-left:14px">Remove task</button>
@@ -523,6 +595,12 @@ function renderTaskDetail(el){
   el.querySelector('#custForm').onsubmit=(e)=>{
     e.preventDefault(); const f=new FormData(e.target);
     it.customer = {name:f.get('name'),phone:f.get('phone'),location:f.get('location'),villa:f.get('villa')};
+    save('tasks'); renderView();
+  };
+  el.querySelector('#remindForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    it.due=f.get('due')||''; it.visitTime=f.get('visitTime')||''; it.remindBefore=f.get('remindBefore')||'';
+    it.notifiedVisit=false;
     save('tasks'); renderView();
   };
   el.querySelector('#markDone').onclick=()=>{ it.done=!it.done; save('tasks'); renderNav(); renderView(); };
@@ -571,6 +649,16 @@ function renderSurveyDetail(el){
     <div class="eyebrow">SITE SURVEY</div><h1 class="title">${escapeHtml(s.customer||'Untitled')}</h1>
     <div class="sub">${[s.villa&&`Villa ${escapeHtml(s.villa)}`,s.city&&escapeHtml(s.city),s.phone&&escapeHtml(s.phone),fmtDate(s.date)].filter(Boolean).join(' · ')} <button class="del" id="editSurvey">edit details</button></div>
     <div class="panel">
+      <h2>Quotation reminder</h2>
+      <div class="count">${(()=>{ const t=data.tasks.find(x=>x.id===s.quotationTaskId); return t ? `You'll be reminded on ${fmtDate(t.due)} to send the quotation.` : "Tell the customer a timeframe, then set a reminder here so it doesn't slip."; })()}</div>
+      <form id="quoteForm" style="display:flex;gap:8px;align-items:center;margin-top:10px">
+        <span style="font-size:13px">Send quotation in</span>
+        <input type="number" name="days" min="1" value="2" style="width:64px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <span style="font-size:13px">day(s)</span>
+        <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Set reminder</button>
+      </form>
+    </div>
+    <div class="panel">
       <button class="addbtn" id="printBtn" style="margin-bottom:14px">🖨 Print this survey</button>
       <form class="inline" id="addSection">
         <input type="text" name="name" placeholder="Area name (e.g. Front Garden)…" required>
@@ -593,6 +681,20 @@ function renderSurveyDetail(el){
     </div>`;
   el.querySelector('#backBtn').onclick=()=>{ currentSurveyId=null; renderView(); };
   el.querySelector('#printBtn').onclick=()=>window.print();
+  el.querySelector('#quoteForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    const days = Math.max(1, Number(f.get('days'))||1);
+    const due = new Date(); due.setDate(due.getDate()+days);
+    const dueISO = due.toISOString().slice(0,10);
+    let t = data.tasks.find(x=>x.id===s.quotationTaskId);
+    if(t){ t.due = dueISO; t.done=false; }
+    else{
+      t = {id:Date.now(),title:`Send quotation — ${s.customer||'customer'}`,tag:'work',priority:'reminder',due:dueISO,recur:'',project:'',
+        customer:{name:s.customer||'',phone:s.phone||'',location:s.city||'',villa:s.villa||''},surveyId:s.id,done:false};
+      data.tasks.push(t); s.quotationTaskId = t.id;
+    }
+    save('tasks'); save('surveys'); renderView();
+  };
   el.querySelector('#editSurvey').onclick=()=>{
     const customer=prompt('Customer name:', s.customer||''); if(customer===null) return;
     const phone=prompt('Phone number:', s.phone||'');
@@ -726,15 +828,30 @@ function checkNotify(){
   const t = todayISO();
   const overdue = data.tasks.filter(x=>!x.done && x.due && x.due<t).length;
   const dueToday = data.tasks.filter(x=>!x.done && x.due===t).length;
-  if(overdue===0 && dueToday===0) return;
-  const sig = `${overdue}-${dueToday}-${t}`;
-  if(store.get('notifSig','')===sig) return;
-  store.set('notifSig', sig);
-  const parts=[]; if(overdue) parts.push(`${overdue} overdue`); if(dueToday) parts.push(`${dueToday} due today`);
-  try{ new Notification('Daily Manager', {body: parts.join(' · ')}); }catch(e){}
+  if(overdue || dueToday){
+    const sig = `${overdue}-${dueToday}-${t}`;
+    if(store.get('notifSig','')!==sig){
+      store.set('notifSig', sig);
+      const parts=[]; if(overdue) parts.push(`${overdue} overdue`); if(dueToday) parts.push(`${dueToday} due today`);
+      try{ new Notification('Daily Manager', {body: parts.join(' · ')}); }catch(e){}
+    }
+  }
+  const now = new Date();
+  let changed=false;
+  data.tasks.forEach(x=>{
+    if(x.done || !x.due || x.remindBefore==='' || x.remindBefore==null || x.notifiedVisit) return;
+    const visitAt = new Date(`${x.due}T${x.visitTime||'09:00'}:00`);
+    const fireAt = new Date(visitAt.getTime() - Number(x.remindBefore)*60000);
+    if(now >= fireAt){
+      const when = x.visitTime ? `at ${x.visitTime}` : `on ${fmtDate(x.due)}`;
+      try{ new Notification('Site visit reminder', {body: `${x.title} — ${when}`}); }catch(e){}
+      x.notifiedVisit = true; changed=true;
+    }
+  });
+  if(changed) save('tasks');
 }
 checkNotify();
-setInterval(checkNotify, 15*60*1000);
+setInterval(checkNotify, 5*60*1000);
 (function checkLock(){
   const pin = store.get('pin','');
   if(!pin) return;
