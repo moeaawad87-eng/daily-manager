@@ -340,9 +340,9 @@ function renderToday(el){
 
 function rowHtml(x){
   return `<div class="row"><input type="checkbox" data-id="${x.id}" ${x.done?'checked':''}>
-    <div class="txt"><b data-opentask="${x.id}" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--line)">${escapeHtml(x.title)}</b>${x.note?`<p>${escapeHtml(x.note)}</p>`:''}
+    <div class="txt" data-opentask="${x.id}" style="cursor:pointer"><b style="text-decoration:underline;text-decoration-color:var(--line)">${escapeHtml(x.title)}</b>${x.note?`<p>${escapeHtml(x.note)}</p>`:''}
     <div style="margin-top:6px">${tagHtml(x.tag)}${x.priority?tagHtml(x.priority):''}</div></div>
-    <div class="meta">${fmtDate(x.due)}</div></div>`;
+    <div class="meta" data-opentask="${x.id}" style="cursor:pointer">${fmtDate(x.due)}</div></div>`;
 }
 function toggleTask(id){ const t=data.tasks.find(x=>x.id===id); if(t){ t.done=!t.done; save('tasks'); renderView(); } }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
@@ -430,7 +430,7 @@ function renderList(el,key,title,sub){
       ${items.length? items.map(x=>`<div class="row" data-search="${escapeHtml(x.title)}"><input type="checkbox" data-id="${x.id}" ${x.done?'checked':''}>
         <div class="txt"><b${key==='tasks'?` data-opentask="${x.id}" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--line)"`:''}>${escapeHtml(x.title)}</b><div style="margin-top:6px">${tagHtml(x.tag)}${x.priority?tagHtml(x.priority):''}${x.recur?`<span class="tag reminder">↻ ${x.recur}</span>`:''}${x.project?`<span class="tag personal">${escapeHtml(x.project)}</span>`:''}</div>
         ${x.customer && (x.customer.name||x.customer.phone||x.customer.location||x.customer.villa)?`<p style="margin:6px 0 0;color:var(--ink-soft);font-size:12.5px">${[x.customer.name&&`👤 ${escapeHtml(x.customer.name)}`,x.customer.phone&&`📞 ${escapeHtml(x.customer.phone)}`,x.customer.location&&`📍 ${escapeHtml(x.customer.location)}`,x.customer.villa&&`Villa ${escapeHtml(x.customer.villa)}`].filter(Boolean).join(' · ')} <button class="del" data-startsurvey="${x.id}">${x.surveyId?'open survey':'start survey'}</button></p>`:''}</div>
-        <div class="meta">${fmtDate(x.due)} <button class="del" data-edit="${x.id}">edit</button> <button class="del" data-del="${x.id}">remove</button></div></div>`).join('')
+        <div class="meta">${key==='tasks'?`<span data-opentask="${x.id}" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--line)">${fmtDate(x.due)}</span>`:fmtDate(x.due)} <button class="del" data-edit="${x.id}">edit</button> <button class="del" data-del="${x.id}">remove</button></div></div>`).join('')
         : '<div class="empty">Nothing here yet — add your first one above.</div>'}
     </div>`;
   el.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{
