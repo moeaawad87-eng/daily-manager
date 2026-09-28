@@ -67,9 +67,11 @@ main{flex:1;min-width:0;padding:26px 30px 60px;max-width:1160px}
 h1.title{font-size:30px;margin:4px 0 6px}
 .sub{color:var(--ink-soft);font-size:14px;margin-bottom:22px}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:22px}
-.stat{background:var(--paper);border:1px solid var(--line);border-top:3px solid var(--c,var(--forest));border-radius:var(--r);padding:14px 16px}
+.stat{background:var(--paper);border:1px solid var(--line);border-top:3px solid var(--c,var(--forest));border-radius:var(--r);padding:14px 16px;transition:background .15s,border-color .15s}
 .stat .num{font-family:'Fraunces',serif;font-size:26px}
 .stat .lbl{color:var(--ink-soft);font-size:12.5px;margin-top:2px}
+.stat.active{background:var(--forest);border-color:var(--forest)}
+.stat.active .num,.stat.active .lbl{color:#fff}
 .panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;margin-bottom:18px}
 .panel h2{font-size:17px;margin-bottom:2px}
 .panel .count{color:var(--ink-soft);font-size:13px;margin-bottom:14px}
@@ -288,6 +290,7 @@ function renderView(){
 }
 
 let todayFilter = 'all';
+let selectedStat = null;
 function renderToday(el){
   const t = todayISO();
   const filt = x => todayFilter==='all' || x.tag===todayFilter;
@@ -302,18 +305,18 @@ function renderToday(el){
       <div style="display:flex;gap:6px">${['all','work','personal'].map(f=>`<button data-tf="${f}" style="border:1px solid var(--line);background:${todayFilter===f?'var(--forest)':'var(--paper)'};color:${todayFilter===f?'#fff':'var(--ink)'};border-radius:7px;padding:6px 12px;font-size:12.5px;font-weight:600">${f[0].toUpperCase()+f.slice(1)}</button>`).join('')}</div>
     </div>
     <div class="stats">
-      <div class="stat" data-stat="overdue" style="--c:var(--clay);cursor:pointer"><div class="num">${overdue.length}</div><div class="lbl">Overdue</div></div>
-      <div class="stat" data-stat="duetoday" style="--c:var(--ok);cursor:pointer"><div class="num">${dueToday.length}</div><div class="lbl">Due today</div></div>
-      <div class="stat" data-stat="projects" style="--c:var(--sky);cursor:pointer"><div class="num">${data.projects.filter(p=>p.status==='active').length}</div><div class="lbl">Active projects</div></div>
-      <div class="stat" data-stat="followups" style="--c:var(--gold);cursor:pointer"><div class="num">${data.followups.filter(f=>!f.done).length}</div><div class="lbl">Follow-ups</div></div>
-      <div class="stat" data-stat="expenses" style="--c:var(--plum);cursor:pointer"><div class="num">AED ${data.expenses.filter(e=>(e.date||'').slice(0,7)===todayISO().slice(0,7)).reduce((s,e)=>s+Number(e.amount||0),0).toFixed(0)}</div><div class="lbl">Spent this month</div></div>
+      <div class="stat${selectedStat==='overdue'?' active':''}" data-stat="overdue" style="--c:var(--clay);cursor:pointer"><div class="num">${overdue.length}</div><div class="lbl">Overdue</div></div>
+      <div class="stat${selectedStat==='duetoday'?' active':''}" data-stat="duetoday" style="--c:var(--ok);cursor:pointer"><div class="num">${dueToday.length}</div><div class="lbl">Due today</div></div>
+      <div class="stat${selectedStat==='projects'?' active':''}" data-stat="projects" style="--c:var(--sky);cursor:pointer"><div class="num">${data.projects.filter(p=>p.status==='active').length}</div><div class="lbl">Active projects</div></div>
+      <div class="stat${selectedStat==='followups'?' active':''}" data-stat="followups" style="--c:var(--gold);cursor:pointer"><div class="num">${data.followups.filter(f=>!f.done).length}</div><div class="lbl">Follow-ups</div></div>
+      <div class="stat${selectedStat==='expenses'?' active':''}" data-stat="expenses" style="--c:var(--plum);cursor:pointer"><div class="num">AED ${data.expenses.filter(e=>(e.date||'').slice(0,7)===todayISO().slice(0,7)).reduce((s,e)=>s+Number(e.amount||0),0).toFixed(0)}</div><div class="lbl">Spent this month</div></div>
     </div>
-    <div class="panel">
+    <div class="panel" id="panel-overdue">
       <h2>Overdue</h2>
       <div class="count">${overdue.length} item${overdue.length===1?'':'s'} need attention</div>
       ${overdue.length? overdue.map(rowHtml).join('') : '<div class="empty">Nothing overdue — good pace.</div>'}
     </div>
-    <div class="panel">
+    <div class="panel" id="panel-duetoday">
       <h2>Due today</h2>
       <div class="count">${dueToday.length} item${dueToday.length===1?'':'s'}</div>
       ${dueToday.length? dueToday.map(rowHtml).join('') : '<div class="empty">Nothing due today.</div>'}
@@ -336,6 +339,17 @@ function renderToday(el){
   el.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.onchange=()=>toggleTask(Number(cb.dataset.id)));
   el.querySelectorAll('[data-tf]').forEach(b=>b.onclick=()=>{ todayFilter=b.dataset.tf; renderView(); });
   el.querySelectorAll('[data-opentask]').forEach(b=>b.onclick=()=>{ currentTaskId=b.dataset.opentask; current='tasks'; renderNav(); renderView(); });
+  el.querySelectorAll('[data-stat]').forEach(s=>s.onclick=()=>{
+    const which = s.dataset.stat;
+    if(which==='overdue' || which==='duetoday'){
+      selectedStat = which;
+      el.querySelectorAll('[data-stat]').forEach(x=>x.classList.toggle('active', x.dataset.stat===which));
+      document.getElementById(which==='overdue'?'panel-overdue':'panel-duetoday')?.scrollIntoView({behavior:'smooth',block:'start'});
+    }
+    else if(which==='projects'){ selectedStat=which; current='projects'; renderNav(); renderView(); }
+    else if(which==='followups'){ selectedStat=which; current='followups'; renderNav(); renderView(); }
+    else if(which==='expenses'){ selectedStat=which; current='expenses'; renderNav(); renderView(); }
+  });
 }
 
 function rowHtml(x){
