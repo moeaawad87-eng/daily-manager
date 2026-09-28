@@ -475,7 +475,8 @@ function renderExpenses(el){
       <form id="addForm" style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">
         <input type="text" name="label" placeholder="What for…" required style="flex:1;min-width:140px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
         <input type="number" name="amount" placeholder="AED" step="0.01" required style="width:100px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
-        <label class="filebtn" style="cursor:pointer">📷 Add receipt<input type="file" id="receiptFile" accept="image/*,application/pdf" capture="environment" style="display:none"></label>
+        <label class="filebtn" style="cursor:pointer">📷 Take photo<input type="file" id="receiptCamera" accept="image/*" capture="environment" style="display:none"></label>
+        <label class="filebtn" style="cursor:pointer">📎 Add file<input type="file" id="receiptFile" accept="image/*,application/pdf" style="display:none"></label>
         <span id="receiptName" style="font-size:12.5px;color:var(--ink-soft);align-self:center"></span>
         <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Add</button>
       </form>
@@ -486,13 +487,16 @@ function renderExpenses(el){
     </div>`;
   el.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{ expenseTab=b.dataset.tab; renderView(); });
   let pendingReceipt = null;
-  const rf = el.querySelector('#receiptFile');
-  rf.onchange=()=>{
-    const file = rf.files[0]; if(!file) return;
+  const attachFile = (file)=>{
+    if(!file) return;
     const r = new FileReader();
     r.onload=()=>{ pendingReceipt = {dataUrl:r.result, type:file.type, name:file.name}; el.querySelector('#receiptName').textContent = file.name; };
     r.readAsDataURL(file);
   };
+  const rc = el.querySelector('#receiptCamera');
+  rc.onchange=()=>attachFile(rc.files[0]);
+  const rf = el.querySelector('#receiptFile');
+  rf.onchange=()=>attachFile(rf.files[0]);
   el.querySelectorAll('[data-viewreceipt]').forEach(b=>b.onclick=()=>{
     const x = data.expenses.find(e=>e.id==b.dataset.viewreceipt);
     if(x && x.receipt) viewReceipt(x.receipt.dataUrl);
