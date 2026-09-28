@@ -155,6 +155,7 @@ main.has-bg>*{position:relative;z-index:1}
   </aside>
   <main>
     <div class="topbar">
+      <button class="mic" id="backBtnGlobal" title="Go back">←</button>
       <input class="search" placeholder="Search anything…" id="search">
       <button class="mic" id="micBtn" title="Add a task by voice">🎙</button>
       <button class="mic" id="newWinBtn" title="Open in a new window">⧉</button>
@@ -238,7 +239,18 @@ async function initCloud(){
 const views = ['today','calendar','schedule','tasks','followups','projects','surveys','notes','scratch','expenses','settings'];
 const icons = {today:'☀',calendar:'▦',schedule:'⏰',tasks:'☑',followups:'↻',projects:'◧',surveys:'📐',notes:'▤',scratch:'✎',expenses:'▢',settings:'⚙'};
 const labels = {followups:'Follow-ups',settings:'Settings',surveys:'Site Surveys',scratch:'Scratchpad'};
-let current = 'today';
+let current = (views.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'today');
+history.replaceState(null,'','#'+current);
+
+function navigateTo(view){
+  current = view;
+  renderNav(); renderView();
+  if(location.hash !== '#'+view) history.pushState(null,'','#'+view);
+}
+window.addEventListener('popstate', ()=>{
+  const v = location.hash.slice(1);
+  if(views.includes(v) && v!==current){ current=v; currentTaskId=null; currentSurveyId=null; renderNav(); renderView(); }
+});
 
 function renderNav(){
   const nav = document.getElementById('nav');
@@ -247,7 +259,7 @@ function renderNav(){
     const n = v==='followups' ? data.followups.filter(f=>!f.done).length : 0;
     return `<button data-v="${v}" class="${v===current?'active':''}">${icons[v]} ${label}${n?`<span class="n">${n}</span>`:''}</button>`;
   }).join('');
-  nav.querySelectorAll('button').forEach(b=>b.onclick=()=>{ current=b.dataset.v; renderNav(); renderView(); });
+  nav.querySelectorAll('button').forEach(b=>b.onclick=()=>navigateTo(b.dataset.v));
 }
 
 function applyBackground(){
@@ -338,7 +350,7 @@ function renderToday(el){
     </div>`;
   el.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.onchange=()=>toggleTask(Number(cb.dataset.id)));
   el.querySelectorAll('[data-tf]').forEach(b=>b.onclick=()=>{ todayFilter=b.dataset.tf; renderView(); });
-  el.querySelectorAll('[data-opentask]').forEach(b=>b.onclick=()=>{ currentTaskId=b.dataset.opentask; current='tasks'; renderNav(); renderView(); });
+  el.querySelectorAll('[data-opentask]').forEach(b=>b.onclick=()=>{ currentTaskId=b.dataset.opentask; navigateTo('tasks'); });
   el.querySelectorAll('[data-stat]').forEach(s=>s.onclick=()=>{
     const which = s.dataset.stat;
     if(which==='overdue' || which==='duetoday'){
@@ -346,9 +358,9 @@ function renderToday(el){
       el.querySelectorAll('[data-stat]').forEach(x=>x.classList.toggle('active', x.dataset.stat===which));
       document.getElementById(which==='overdue'?'panel-overdue':'panel-duetoday')?.scrollIntoView({behavior:'smooth',block:'start'});
     }
-    else if(which==='projects'){ selectedStat=which; current='projects'; renderNav(); renderView(); }
-    else if(which==='followups'){ selectedStat=which; current='followups'; renderNav(); renderView(); }
-    else if(which==='expenses'){ selectedStat=which; current='expenses'; renderNav(); renderView(); }
+    else if(which==='projects'){ selectedStat=which; navigateTo('projects'); }
+    else if(which==='followups'){ selectedStat=which; navigateTo('followups'); }
+    else if(which==='expenses'){ selectedStat=which; navigateTo('expenses'); }
   });
 }
 
@@ -473,7 +485,7 @@ function renderList(el,key,title,sub){
       data.surveys.unshift(s); it.surveyId = s.id; save('surveys'); save(key);
       currentSurveyId = s.id;
     }
-    current='surveys'; renderNav(); renderView();
+    navigateTo('surveys');
   });
   el.querySelector('#addForm').onsubmit=(e)=>{
     e.preventDefault(); const f=new FormData(e.target);
@@ -788,7 +800,7 @@ function renderTaskDetail(el){
       data.surveys.unshift(s); it.surveyId = s.id; save('surveys'); save('tasks');
       currentSurveyId = s.id;
     }
-    currentTaskId = null; current='surveys'; renderNav(); renderView();
+    currentTaskId = null; navigateTo('surveys');
   };
 }
 
@@ -978,8 +990,9 @@ function renderSettings(el){
   const nb = el.querySelector('#enableNotif'); if(nb) nb.onclick=()=>{ Notification.requestPermission().then(()=>{ renderView(); checkNotify(); }); };
 }
 
-document.getElementById('quickAddBtn').onclick=()=>{ current='tasks'; renderNav(); renderView(); document.querySelector('#addForm input[type=text]')?.focus(); };
+document.getElementById('quickAddBtn').onclick=()=>{ navigateTo('tasks'); document.querySelector('#addForm input[type=text]')?.focus(); };
 document.getElementById('newWinBtn').onclick=()=>{ window.open(location.href, '_blank'); };
+document.getElementById('backBtnGlobal').onclick=()=>{ history.back(); };
 document.getElementById('search').oninput=(e)=>{
   const q=e.target.value.toLowerCase().trim();
   document.querySelectorAll('[data-search]').forEach(row=>{
@@ -1001,7 +1014,7 @@ else{
   rec.onresult=(e)=>{
     const text = e.results[0][0].transcript;
     data.tasks.push({id:Date.now(),title:text,tag:'work',priority:'',due:todayISO(),recur:'',done:false});
-    save('tasks'); current='tasks'; renderNav(); renderView();
+    save('tasks'); navigateTo('tasks');
   };
   rec.onend=()=>{ listening=false; micBtn.classList.remove('on'); };
   rec.onerror=()=>{ listening=false; micBtn.classList.remove('on'); };
