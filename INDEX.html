@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mohamad Daily Manager</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Daily Manager">
+<meta name="theme-color" content="#123B2E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<style>
+:root{
+  --forest:#123B2E; --forest-deep:#0C2A21; --cream:#FAF8F3; --paper:#FFFFFF;
+  --ink:#1B2420; --ink-soft:#5B6660; --line:#E4E1D8;
+  --gold:#B4863A; --clay:#B4522F; --sky:#3E6E8E; --plum:#7A5C8A;
+  --ok:#3E7A54;
+  --r: 10px;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --forest:#0F2E24; --forest-deep:#0A211A; --cream:#15181A; --paper:#1D2123;
+    --ink:#EDECE8; --ink-soft:#A3ADA6; --line:#2C3134;
+  }
+}
+:root[data-theme="dark"]{
+  --forest:#0F2E24; --forest-deep:#0A211A; --cream:#15181A; --paper:#1D2123;
+  --ink:#EDECE8; --ink-soft:#A3ADA6; --line:#2C3134;
+}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--cream);color:var(--ink);font-family:'Inter',system-ui,sans-serif;font-size:15px;line-height:1.5;height:100%}
+html,body{height:100%}
+h1,h2,h3{font-family:'Fraunces',Georgia,serif;font-weight:600;margin:0}
+button{font-family:inherit;cursor:pointer}
+input,textarea,select{font-family:inherit;font-size:14px}
+.app{display:flex;min-height:100%}
+/* Sidebar */
+.side{width:230px;flex:none;background:var(--forest-deep);color:#EDEEE9;display:flex;flex-direction:column;padding:20px 14px;padding-top:calc(20px + env(safe-area-inset-top,0px))}
+.brand{display:flex;gap:10px;align-items:center;padding:4px 8px 22px}
+.brand .mark{width:34px;height:34px;border-radius:8px;background:linear-gradient(160deg,var(--gold),#8B6524);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-weight:600;color:#1B140A}
+.brand div b{display:block;font-size:14.5px}
+.brand div span{font-size:11.5px;color:#B9C4BC}
+nav{display:flex;flex-direction:column;gap:2px;flex:1}
+nav button{display:flex;align-items:center;gap:10px;background:none;border:none;color:#CFD8D2;text-align:left;padding:9px 10px;border-radius:8px;font-size:13.8px}
+nav button .n{margin-left:auto;background:var(--clay);color:#fff;font-size:11px;padding:1px 6px;border-radius:20px}
+nav button.active{background:rgba(255,255,255,.08);color:#fff}
+nav button:hover{background:rgba(255,255,255,.06)}
+.side-foot{font-size:12px;color:#93A099;padding:10px 8px 0;border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:12px}
+/* Main */
+main{flex:1;min-width:0;padding:26px 30px 60px;max-width:1160px}
+.topbar{display:flex;gap:14px;align-items:center;margin-bottom:26px}
+.search{flex:1;background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:9px 14px;color:var(--ink-soft);font-size:13.5px}
+.iconbtn{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--paper);display:flex;align-items:center;justify-content:center}
+.addbtn{background:var(--forest);color:#fff;border:none;border-radius:9px;padding:9px 16px;font-weight:600;font-size:13.5px;display:flex;gap:6px;align-items:center}
+.eyebrow{color:var(--gold);font-size:12.5px;font-weight:600;letter-spacing:.02em}
+h1.title{font-size:30px;margin:4px 0 6px}
+.sub{color:var(--ink-soft);font-size:14px;margin-bottom:22px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:22px}
+.stat{background:var(--paper);border:1px solid var(--line);border-top:3px solid var(--c,var(--forest));border-radius:var(--r);padding:14px 16px}
+.stat .num{font-family:'Fraunces',serif;font-size:26px}
+.stat .lbl{color:var(--ink-soft);font-size:12.5px;margin-top:2px}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;margin-bottom:18px}
+.panel h2{font-size:17px;margin-bottom:2px}
+.panel .count{color:var(--ink-soft);font-size:13px;margin-bottom:14px}
+.row{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:none}
+.row input[type=checkbox]{margin-top:3px;width:16px;height:16px;accent-color:var(--forest)}
+.row .txt b{font-size:14px}
+.row .txt p{margin:3px 0 0;color:var(--ink-soft);font-size:13px}
+.tag{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:5px;margin-right:6px;vertical-align:middle}
+.tag.work{background:#E4EEE9;color:var(--ok)}
+.tag.personal{background:#EEE6F2;color:var(--plum)}
+.tag.high{background:#F7E4DE;color:var(--clay)}
+.tag.reminder{background:#F2EAD9;color:var(--gold)}
+.meta{color:var(--ink-soft);font-size:12px;margin-left:auto;white-space:nowrap}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--c,var(--gold));border-radius:8px;padding:14px}
+.card b{font-size:13.8px}
+.card p{margin:5px 0 0;color:var(--ink-soft);font-size:12.8px}
+.empty{color:var(--ink-soft);font-size:13.5px;padding:18px 0;text-align:center}
+.quickgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.qtile{border:1px dashed var(--line);border-radius:9px;background:var(--cream);padding:16px 8px;text-align:center;font-size:12.5px;color:var(--ink-soft)}
+form.inline{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+form.inline input,form.inline select{padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)}
+form.inline input[type=text]{flex:1;min-width:140px}
+form.inline button{background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 14px;font-weight:600;font-size:13px}
+.del{background:none;border:none;color:var(--ink-soft);font-size:12px}
+.del:hover{color:var(--clay)}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.calgrid .d{background:var(--paper);border:1px solid var(--line);border-radius:7px;min-height:64px;padding:6px;font-size:12px}
+.calgrid .d.out{opacity:.35}
+.calgrid .d.today{border-color:var(--gold);border-width:2px}
+.calgrid .dot{width:5px;height:5px;border-radius:50%;background:var(--clay);display:inline-block;margin-top:3px}
+.mic{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--paper);display:flex;align-items:center;justify-content:center;font-size:15px}
+.mic.on{background:var(--clay);color:#fff;border-color:var(--clay)}
+.mic:disabled{opacity:.35;cursor:not-allowed}
+.notephoto{width:100%;border-radius:6px;margin-top:8px;display:block;max-height:160px;object-fit:cover}
+.bggrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:14px}
+.bgthumb{position:relative;border-radius:8px;overflow:hidden;border:1px solid var(--line);aspect-ratio:4/3}
+.bgthumb img{width:100%;height:100%;object-fit:cover;display:block}
+.bgthumb button{position:absolute;top:5px;right:5px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:5px;font-size:11px;padding:2px 6px}
+.filebtn{border:1px dashed var(--line);border-radius:8px;background:var(--cream);color:var(--ink-soft);padding:9px 14px;font-size:13px}
+main{position:relative}
+main.has-bg::before{content:'';position:absolute;inset:0;background-size:cover;background-position:center;opacity:.08;pointer-events:none;z-index:0}
+main.has-bg>*{position:relative;z-index:1}
+.survcard{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px;cursor:pointer}
+.survcard:hover{border-color:var(--gold)}
+.sectiongrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:14px}
+.sectioncard{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.sectioncard img{width:100%;height:150px;object-fit:cover;display:block;background:var(--cream)}
+.sectioncard .sc-body{padding:12px 14px}
+.sectioncard .sc-body b{font-size:14.5px}
+.sectioncard .sc-body .lbl{font-size:11px;color:var(--gold);font-weight:600;margin-top:8px;display:block}
+.sectioncard .sc-body p{margin:2px 0 0;font-size:12.8px;color:var(--ink-soft);white-space:pre-wrap}
+.backlink{background:none;border:none;color:var(--gold);font-weight:600;font-size:13px;margin-bottom:14px;cursor:pointer}
+@media print{
+  .side, .topbar, .backlink, form, .del, .addbtn, .mic{display:none !important}
+  main{padding:0 !important}
+  body{background:#fff}
+  .panel{border:none !important;box-shadow:none !important;padding:8px 0 !important}
+  .photoitem{break-inside:avoid;border-top:1px solid #ccc !important}
+}
+@media(max-width:820px){
+  .app{flex-direction:column}
+  .side{width:100%;flex-direction:row;align-items:center;padding:10px 14px;overflow-x:auto}
+  .brand{padding:0 10px 0 0}
+  nav{flex-direction:row;flex:none}
+  nav button .n{display:none}
+  .side-foot{display:none}
+  main{padding:18px 16px 40px}
+  .grid2{grid-template-columns:1fr}
+  .quickgrid{grid-template-columns:repeat(3,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="mark">M</div><div><b>Mohamad</b><span>Daily Manager</span></div></div>
+    <nav id="nav"></nav>
+    <div class="side-foot">Private workspace &middot; saved on this device</div>
+  </aside>
+  <main>
+    <div class="topbar">
+      <input class="search" placeholder="Search anything…" id="search">
+      <button class="mic" id="micBtn" title="Add a task by voice">🎙</button>
+      <button class="addbtn" id="quickAddBtn">+ Add new</button>
+    </div>
+    <div id="view"></div>
+  </main>
+</div>
+
+<script>
+const store = { get(k,d){ try{ const v=localStorage.getItem('mdm_'+k); return v?JSON.parse(v):d; }catch(e){ return d; } },
+  set(k,v){ try{ localStorage.setItem('mdm_'+k, JSON.stringify(v)); }catch(e){} } };
+
+let data = {
+  tasks: store.get('tasks', [
+    {id:1,title:'Engineer Aya – BMW and villa work',note:'Call to follow up on new BMW work and villa project she promised.',tag:'work',priority:'reminder',due:'2026-09-02',done:false},
+    {id:2,title:'M4 pots',note:'Got approvals — start buying pots and artificial plants for M4.',tag:'work',priority:'high',due:'2026-09-05',done:false},
+  ]),
+  notes: store.get('notes', []),
+  followups: store.get('followups', []),
+  projects: store.get('projects', [{id:1,name:'M4 Material Submittal',status:'active'},{id:2,name:'Tawazun Pots – Abraj Al Baher',status:'active'}]),
+  expenses: store.get('expenses', []),
+  backgrounds: store.get('backgrounds', []),
+  schedule: store.get('schedule', []),
+  surveys: store.get('surveys', []),
+};
+const firebaseConfig = {
+  apiKey: "AIzaSyBvQ1-8G5H-_YnX3Cvna7i6nwWaykxKU_M",
+  authDomain: "mohamad-daily-manager.firebaseapp.com",
+  projectId: "mohamad-daily-manager",
+  storageBucket: "mohamad-daily-manager.firebasestorage.app",
+  messagingSenderId: "510364490724",
+  appId: "1:510364490724:web:6862b52337d98a3f5005f1"
+};
+firebase.initializeApp(firebaseConfig);
+const SYNC_KEYS = ['tasks','notes','followups','projects','expenses','backgrounds','schedule','surveys'];
+const fsdocs = {}; SYNC_KEYS.forEach(k=>{ fsdocs[k] = firebase.firestore().collection('app').doc(k); });
+let cloudReady=false;
+const syncTimers = {}, applyingRemote = {};
+function save(k){ store.set(k, data[k]); queueCloudSync(k); }
+function queueCloudSync(k){
+  if(applyingRemote[k]) return;
+  clearTimeout(syncTimers[k]);
+  syncTimers[k] = setTimeout(()=>{ fsdocs[k].set({items:data[k]}).catch(()=>{}); }, 600);
+}
+let syncStatus = 'checking';
+async function initCloud(){
+  try{
+    await new Promise((resolve,reject)=>{
+      firebase.auth().signInAnonymously().catch(reject);
+      firebase.auth().onAuthStateChanged(u=>{ if(u) resolve(); });
+    });
+    for(const k of SYNC_KEYS){
+      const snap = await fsdocs[k].get();
+      if(snap.exists){
+        const remote = snap.data();
+        if(remote && Array.isArray(remote.items)) data[k]=remote.items;
+      } else {
+        // First run after the storage upgrade: this category has no cloud copy yet.
+        // Push whatever is already saved on this device so nothing looks lost.
+        fsdocs[k].set({items: data[k]}).catch(()=>{});
+      }
+    }
+    cloudReady = true; syncStatus='connected';
+    renderNav(); renderView(); applyBackground();
+    SYNC_KEYS.forEach(k=>{
+      fsdocs[k].onSnapshot(snap=>{
+        if(!snap.exists || snap.metadata.hasPendingWrites) return;
+        const remote = snap.data();
+        if(!remote || !Array.isArray(remote.items)) return;
+        if(JSON.stringify(remote.items)!==JSON.stringify(data[k])){
+          data[k]=remote.items; store.set(k,remote.items);
+          applyingRemote[k]=true; renderNav(); renderView(); applyBackground(); applyingRemote[k]=false;
+        }
+      });
+    });
+  }catch(e){ syncStatus='unavailable'; if(current==='settings') renderView(); }
+}
+
+const views = ['today','calendar','schedule','tasks','followups','projects','surveys','notes','expenses','settings'];
+const icons = {today:'☀',calendar:'▦',schedule:'⏰',tasks:'☑',followups:'↻',projects:'◧',surveys:'📐',notes:'▤',expenses:'▢',settings:'⚙'};
+const labels = {followups:'Follow-ups',settings:'Settings',surveys:'Site Surveys'};
+let current = 'today';
+
+function renderNav(){
+  const nav = document.getElementById('nav');
+  nav.innerHTML = views.map(v=>{
+    const label = labels[v] || v[0].toUpperCase()+v.slice(1);
+    const n = v==='followups' ? data.followups.filter(f=>!f.done).length : 0;
+    return `<button data-v="${v}" class="${v===current?'active':''}">${icons[v]} ${label}${n?`<span class="n">${n}</span>`:''}</button>`;
+  }).join('');
+  nav.querySelectorAll('button').forEach(b=>b.onclick=()=>{ current=b.dataset.v; renderNav(); renderView(); });
+}
+
+function applyBackground(){
+  const main = document.querySelector('main');
+  if(data.backgrounds.length){
+    const pick = data.backgrounds[Math.floor(Date.now()/3600000)%data.backgrounds.length];
+    main.classList.add('has-bg');
+    main.style.setProperty('--bgimg', `url(${pick})`);
+    main.style.setProperty('background', 'none');
+    let s=document.getElementById('bgStyle');
+    if(!s){ s=document.createElement('style'); s.id='bgStyle'; document.head.appendChild(s); }
+    s.textContent = `main.has-bg::before{background-image:url(${pick})}`;
+  } else {
+    main.classList.remove('has-bg');
+  }
+}
+
+function fmtDate(iso){
+  if(!iso) return '';
+  const d = new Date(iso+'T00:00:00');
+  return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+
+function tagHtml(t){ return t?`<span class="tag ${t}">${t}</span>`:''; }
+
+function renderView(){
+  const el = document.getElementById('view');
+  if(current==='today') return renderToday(el);
+  if(current==='calendar') return renderCalendar(el);
+  if(current==='tasks') return currentTaskId ? renderTaskDetail(el) : renderList(el,'tasks','Tasks','What needs doing');
+  if(current==='followups') return renderList(el,'followups','Follow-ups','People and things to chase');
+  if(current==='projects') return renderProjects(el);
+  if(current==='notes') return renderNotes(el);
+  if(current==='expenses') return renderExpenses(el);
+  if(current==='schedule') return renderSchedule(el);
+  if(current==='surveys') return renderSurveys(el);
+  if(current==='settings') return renderSettings(el);
+}
+
+let todayFilter = 'all';
+function renderToday(el){
+  const t = todayISO();
+  const filt = x => todayFilter==='all' || x.tag===todayFilter;
+  const overdue = data.tasks.filter(x=>!x.done && x.due && x.due<t && filt(x));
+  const dueToday = data.tasks.filter(x=>!x.done && x.due===t && filt(x));
+  const day = new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+      <div><div class="eyebrow">${day.toUpperCase()}</div>
+      <h1 class="title">Good day, Mohamad</h1>
+      <div class="sub">Let's make today clear and productive.</div></div>
+      <div style="display:flex;gap:6px">${['all','work','personal'].map(f=>`<button data-tf="${f}" style="border:1px solid var(--line);background:${todayFilter===f?'var(--forest)':'var(--paper)'};color:${todayFilter===f?'#fff':'var(--ink)'};border-radius:7px;padding:6px 12px;font-size:12.5px;font-weight:600">${f[0].toUpperCase()+f.slice(1)}</button>`).join('')}</div>
+    </div>
+    <div class="stats">
+      <div class="stat" style="--c:var(--clay)"><div class="num">${overdue.length}</div><div class="lbl">Overdue</div></div>
+      <div class="stat" style="--c:var(--ok)"><div class="num">${dueToday.length}</div><div class="lbl">Due today</div></div>
+      <div class="stat" style="--c:var(--sky)"><div class="num">${data.projects.filter(p=>p.status==='active').length}</div><div class="lbl">Active projects</div></div>
+      <div class="stat" style="--c:var(--gold)"><div class="num">${data.followups.filter(f=>!f.done).length}</div><div class="lbl">Follow-ups</div></div>
+      <div class="stat" style="--c:var(--plum)"><div class="num">AED ${data.expenses.filter(e=>(e.date||'').slice(0,7)===todayISO().slice(0,7)).reduce((s,e)=>s+Number(e.amount||0),0).toFixed(0)}</div><div class="lbl">Spent this month</div></div>
+    </div>
+    <div class="panel">
+      <h2>Overdue</h2>
+      <div class="count">${overdue.length} item${overdue.length===1?'':'s'} need attention</div>
+      ${overdue.length? overdue.map(rowHtml).join('') : '<div class="empty">Nothing overdue — good pace.</div>'}
+    </div>
+    <div class="panel">
+      <h2>Due today</h2>
+      <div class="count">${dueToday.length} item${dueToday.length===1?'':'s'}</div>
+      ${dueToday.length? dueToday.map(rowHtml).join('') : '<div class="empty">Nothing due today.</div>'}
+    </div>
+    <div class="panel">
+      <h2>This week</h2>
+      <div class="count">A quick rollup instead of push notifications</div>
+      ${(()=>{
+        const now=new Date(); const weekAhead=new Date(now); weekAhead.setDate(now.getDate()+7);
+        const weekAgo=new Date(now); weekAgo.setDate(now.getDate()-7);
+        const wISO=weekAhead.toISOString().slice(0,10), agoISO=weekAgo.toISOString().slice(0,10);
+        const upcoming = data.tasks.filter(x=>!x.done && x.due && x.due>t && x.due<=wISO && filt(x));
+        const completed = data.tasks.filter(x=>x.done && x.due && x.due>=agoISO && x.due<=t && filt(x)).length;
+        return `<div class="grid2">
+          <div class="card" style="--c:var(--sky)"><b>${upcoming.length} due in next 7 days</b><p>${upcoming.slice(0,3).map(u=>escapeHtml(u.title)).join(', ')||'Nothing coming up'}</p></div>
+          <div class="card" style="--c:var(--ok)"><b>${completed} completed this week</b><p>Keep the pace going</p></div>
+        </div>`;
+      })()}
+    </div>`;
+  el.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.onchange=()=>toggleTask(Number(cb.dataset.id)));
+  el.querySelectorAll('[data-tf]').forEach(b=>b.onclick=()=>{ todayFilter=b.dataset.tf; renderView(); });
+  el.querySelectorAll('[data-opentask]').forEach(b=>b.onclick=()=>{ currentTaskId=b.dataset.opentask; current='tasks'; renderNav(); renderView(); });
+}
+
+function rowHtml(x){
+  return `<div class="row"><input type="checkbox" data-id="${x.id}" ${x.done?'checked':''}>
+    <div class="txt"><b data-opentask="${x.id}" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--line)">${escapeHtml(x.title)}</b>${x.note?`<p>${escapeHtml(x.note)}</p>`:''}
+    <div style="margin-top:6px">${tagHtml(x.tag)}${x.priority?tagHtml(x.priority):''}</div></div>
+    <div class="meta">${fmtDate(x.due)}</div></div>`;
+}
+function toggleTask(id){ const t=data.tasks.find(x=>x.id===id); if(t){ t.done=!t.done; save('tasks'); renderView(); } }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function mapsLink(loc){
+  if(!loc) return '';
+  if(/^https?:\/\//i.test(loc)) return loc;
+  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(loc);
+}
+function wazeLink(loc){
+  if(!loc) return '';
+  return 'https://waze.com/ul?q=' + encodeURIComponent(loc) + '&navigate=yes';
+}
+
+function nextDue(due,recur){
+  const d = new Date(due+'T00:00:00');
+  if(recur==='daily') d.setDate(d.getDate()+1);
+  else if(recur==='weekly') d.setDate(d.getDate()+7);
+  else if(recur==='monthly') d.setMonth(d.getMonth()+1);
+  return d.toISOString().slice(0,10);
+}
+function renderList(el,key,title,sub){
+  const items = data[key];
+  const showRecur = key==='tasks';
+  el.innerHTML = `<div class="eyebrow">${title.toUpperCase()}</div><h1 class="title">${title}</h1><div class="sub">${sub}</div>
+    <div class="panel">
+      <form class="inline" id="addForm">
+        <input type="text" name="title" placeholder="Add a ${key==='tasks'?'task':'follow-up'}…" required>
+        <select name="tag"><option value="work">Work</option><option value="personal">Personal</option></select>
+        <select name="priority"><option value="">Normal</option><option value="high">High</option><option value="reminder">Reminder</option></select>
+        <input type="date" name="due">
+        ${showRecur?`<input type="time" name="visitTime" title="Visit time (optional)">`:''}
+        ${showRecur?`<select name="remindBefore"><option value="">No reminder</option><option value="0">Remind at the time</option><option value="30">30 min before</option><option value="60">1 hour before</option><option value="180">3 hours before</option><option value="1440">1 day before</option><option value="2880">2 days before</option></select>`:''}
+        ${showRecur?`<select name="recur"><option value="">Doesn't repeat</option><option value="daily">Repeats daily</option><option value="weekly">Repeats weekly</option><option value="monthly">Repeats monthly</option></select>`:''}
+        ${showRecur?`<select name="project"><option value="">No project</option>${data.projects.map(p=>`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('')}</select>`:''}
+        <button type="submit">Add</button>
+      </form>
+      ${showRecur?`<div style="border:1px dashed var(--line);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:8px">Customer details (optional — for site visits)</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input type="text" id="custName" placeholder="Name" style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+          <input type="text" id="custPhone" placeholder="Phone" style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+          <input type="text" id="custLocation" placeholder="Location" style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+          <input type="text" id="custVilla" placeholder="Villa #" style="flex:1;min-width:90px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        </div>
+      </div>`:''}
+      ${items.length? items.map(x=>`<div class="row" data-search="${escapeHtml(x.title)}"><input type="checkbox" data-id="${x.id}" ${x.done?'checked':''}>
+        <div class="txt"><b${key==='tasks'?` data-opentask="${x.id}" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--line)"`:''}>${escapeHtml(x.title)}</b><div style="margin-top:6px">${tagHtml(x.tag)}${x.priority?tagHtml(x.priority):''}${x.recur?`<span class="tag reminder">↻ ${x.recur}</span>`:''}${x.project?`<span class="tag personal">${escapeHtml(x.project)}</span>`:''}</div>
+        ${x.customer && (x.customer.name||x.customer.phone||x.customer.location||x.customer.villa)?`<p style="margin:6px 0 0;color:var(--ink-soft);font-size:12.5px">${[x.customer.name&&`👤 ${escapeHtml(x.customer.name)}`,x.customer.phone&&`📞 ${escapeHtml(x.customer.phone)}`,x.customer.location&&`📍 ${escapeHtml(x.customer.location)}`,x.customer.villa&&`Villa ${escapeHtml(x.customer.villa)}`].filter(Boolean).join(' · ')} <button class="del" data-startsurvey="${x.id}">${x.surveyId?'open survey':'start survey'}</button></p>`:''}</div>
+        <div class="meta">${fmtDate(x.due)} <button class="del" data-edit="${x.id}">edit</button> <button class="del" data-del="${x.id}">remove</button></div></div>`).join('')
+        : '<div class="empty">Nothing here yet — add your first one above.</div>'}
+    </div>`;
+  el.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{
+    const it=items.find(i=>i.id==b.dataset.edit);
+    const t=prompt('Edit title:', it.title); if(t===null) return;
+    const d=prompt('Due date (YYYY-MM-DD), blank to clear:', it.due||'');
+    it.title=t; it.due=d||''; save(key); renderView();
+  });
+  el.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.onchange=()=>{
+    const it=items.find(i=>i.id==cb.dataset.id); it.done=!it.done;
+    if(it.done && it.recur && it.due){ items.push({...it,id:Date.now(),done:false,due:nextDue(it.due,it.recur)}); }
+    save(key); renderNav(); renderView();
+  });
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this? This cannot be undone.')) return;
+    data[key]=items.filter(i=>i.id!=b.dataset.del); save(key); renderNav(); renderView();
+  });
+  if(key==='tasks') el.querySelectorAll('[data-opentask]').forEach(b=>b.onclick=()=>{ currentTaskId=b.dataset.opentask; renderView(); });
+  el.querySelectorAll('[data-startsurvey]').forEach(b=>b.onclick=()=>{
+    const it = items.find(i=>i.id==b.dataset.startsurvey);
+    if(it.surveyId && data.surveys.find(s=>s.id===it.surveyId)){
+      currentSurveyId = it.surveyId;
+    } else {
+      const c = it.customer||{};
+      const s = {id:Date.now(),customer:c.name||it.title,phone:c.phone||'',city:c.location||'',villa:c.villa||'',date:it.due||todayISO(),sections:[]};
+      data.surveys.unshift(s); it.surveyId = s.id; save('surveys'); save(key);
+      currentSurveyId = s.id;
+    }
+    current='surveys'; renderNav(); renderView();
+  });
+  el.querySelector('#addForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    const cn=el.querySelector('#custName'), cp=el.querySelector('#custPhone'), cl=el.querySelector('#custLocation'), cv=el.querySelector('#custVilla');
+    const customer = (cn&&(cn.value||cp.value||cl.value||cv.value)) ? {name:cn.value,phone:cp.value,location:cl.value,villa:cv.value} : null;
+    items.push({id:Date.now(),title:f.get('title'),tag:f.get('tag'),priority:f.get('priority'),due:f.get('due'),recur:f.get('recur')||'',project:f.get('project')||'',customer,visitTime:f.get('visitTime')||'',remindBefore:f.get('remindBefore')||'',done:false});
+    save(key); e.target.reset(); renderNav(); renderView();
+  };
+}
+
+function renderProjects(el){
+  el.innerHTML = `<div class="eyebrow">PROJECTS</div><h1 class="title">Projects</h1><div class="sub">What's currently active</div>
+    <div class="panel">
+      <form class="inline" id="addForm"><input type="text" name="name" placeholder="New project…" required><button type="submit">Add</button></form>
+      <div class="grid2">${data.projects.length? data.projects.map(p=>{
+        const linked = data.tasks.filter(t=>t.project===p.name);
+        const done = linked.filter(t=>t.done).length;
+        const pct = linked.length? Math.round(done/linked.length*100) : 0;
+        return `<div class="card" style="--c:${p.status==='active'?'var(--ok)':'var(--ink-soft)'}"><b>${escapeHtml(p.name)}</b><p>${p.status==='active'?'Active':'Done'} &middot; <button class="del" data-tog="${p.id}">toggle</button> <button class="del" data-del="${p.id}">remove</button></p>
+        ${linked.length?`<div style="background:var(--line);border-radius:6px;height:6px;margin-top:9px;overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--ok)"></div></div><p style="margin-top:5px">${done}/${linked.length} tasks done (${pct}%)</p>`:'<p style="margin-top:5px">No tasks linked yet</p>'}
+        </div>`;
+      }).join('') : '<div class="empty">No projects yet.</div>'}</div>
+    </div>`;
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this project?')) return;
+    data.projects=data.projects.filter(p=>p.id!=b.dataset.del); save('projects'); renderView();
+  });
+  el.querySelectorAll('[data-tog]').forEach(b=>b.onclick=()=>{ const p=data.projects.find(p=>p.id==b.dataset.tog); p.status=p.status==='active'?'done':'active'; save('projects'); renderView(); });
+  el.querySelector('#addForm').onsubmit=(e)=>{ e.preventDefault(); const f=new FormData(e.target); data.projects.push({id:Date.now(),name:f.get('name'),status:'active'}); save('projects'); e.target.reset(); renderView(); };
+}
+
+function renderNotes(el){
+  el.innerHTML = `<div class="eyebrow">NOTES</div><h1 class="title">Notes</h1><div class="sub">${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}</div>
+    <div class="panel">
+      <form class="inline" id="addForm" style="flex-direction:column;align-items:stretch">
+        <input type="text" name="title" placeholder="Title…" required>
+        <textarea name="body" rows="2" placeholder="Write a note…" style="padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)"></textarea>
+        <label class="filebtn" style="cursor:pointer">📷 Attach photo<input type="file" name="photo" accept="image/*" style="display:none"></label>
+        <button type="submit" style="align-self:flex-start">Add note</button>
+      </form>
+      <div class="grid2">${data.notes.length? data.notes.map(n=>`<div class="card" data-search="${escapeHtml(n.title+' '+n.body)}">${n.photo?`<img class="notephoto" src="${n.photo}">`:''}<b>${escapeHtml(n.title)}</b><p>${escapeHtml(n.body)}</p><p style="margin-top:8px"><button class="del" data-edit="${n.id}">edit</button> <button class="del" data-del="${n.id}">remove</button></p></div>`).join('') : '<div class="empty">No notes yet — jot one down above.</div>'}</div>
+    </div>`;
+  el.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{
+    const n=data.notes.find(i=>i.id==b.dataset.edit);
+    const t=prompt('Edit title:', n.title); if(t===null) return;
+    const body=prompt('Edit note:', n.body);
+    n.title=t; n.body=body===null?n.body:body; save('notes'); renderView();
+  });
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this note?')) return;
+    data.notes=data.notes.filter(n=>n.id!=b.dataset.del); save('notes'); renderView();
+  });
+  el.querySelector('#addForm').onsubmit=async(e)=>{
+    e.preventDefault(); const f=new FormData(e.target); const file=f.get('photo');
+    const push=(photo)=>{ data.notes.unshift({id:Date.now(),title:f.get('title'),body:f.get('body'),photo:photo||''}); save('notes'); e.target.reset(); renderView(); };
+    if(file && file.size){ const photo = await compressImage(file); push(photo||''); }
+    else push('');
+  };
+}
+
+function compressImage(file, maxDim, quality){
+  maxDim = maxDim || 1280; quality = quality || 0.72;
+  return new Promise((resolve)=>{
+    if(!file || !file.type || !file.type.startsWith('image/')){ resolve(null); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      let w=img.naturalWidth, h=img.naturalHeight;
+      if(w>maxDim || h>maxDim){
+        if(w>h){ h=Math.round(h*maxDim/w); w=maxDim; } else { w=Math.round(w*maxDim/h); h=maxDim; }
+      }
+      const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      try{ resolve(canvas.toDataURL('image/jpeg', quality)); }catch(e){ resolve(null); }
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+function dataURLtoBlob(dataURL){
+  const [meta, b64] = dataURL.split(',');
+  const mime = meta.match(/:(.*?);/)[1];
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return new Blob([arr], {type: mime});
+}
+function viewReceipt(dataUrl){
+  try{
+    const blob = dataURLtoBlob(dataUrl);
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  }catch(e){ window.open(dataUrl, '_blank'); }
+}
+
+let expenseTab = 'work';
+function renderExpenses(el){
+  const list = data.expenses.filter(x=>(x.category||'work')===expenseTab);
+  const total = list.reduce((s,e)=>s+Number(e.amount||0),0);
+  const workTotal = data.expenses.filter(x=>(x.category||'work')==='work').reduce((s,e)=>s+Number(e.amount||0),0);
+  const personalTotal = data.expenses.filter(x=>x.category==='personal').reduce((s,e)=>s+Number(e.amount||0),0);
+  el.innerHTML = `<div class="eyebrow">EXPENSES</div><h1 class="title">Expenses</h1><div class="sub">Work and personal spending, kept separate, with receipts attached</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button data-tab="work" style="border:1px solid var(--line);background:${expenseTab==='work'?'var(--forest)':'var(--paper)'};color:${expenseTab==='work'?'#fff':'var(--ink)'};border-radius:7px;padding:8px 16px;font-size:13px;font-weight:600">Work · AED ${workTotal.toFixed(2)}</button>
+      <button data-tab="personal" style="border:1px solid var(--line);background:${expenseTab==='personal'?'var(--forest)':'var(--paper)'};color:${expenseTab==='personal'?'#fff':'var(--ink)'};border-radius:7px;padding:8px 16px;font-size:13px;font-weight:600">Personal · AED ${personalTotal.toFixed(2)}</button>
+    </div>
+    <div class="panel">
+      <h2>${expenseTab==='work'?'Work':'Personal'} — AED ${total.toFixed(2)}</h2>
+      <div class="count">${list.length} receipt${list.length===1?'':'s'}</div>
+      <form id="addForm" style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">
+        <input type="text" name="label" placeholder="What for…" required style="flex:1;min-width:140px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="number" name="amount" placeholder="AED" step="0.01" required style="width:100px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <label class="filebtn" style="cursor:pointer">📷 Take photo<input type="file" id="receiptCamera" accept="image/*" capture="environment" style="display:none"></label>
+        <label class="filebtn" style="cursor:pointer">📎 Add file<input type="file" id="receiptFile" accept="image/*,application/pdf" style="display:none"></label>
+        <span id="receiptName" style="font-size:12.5px;color:var(--ink-soft);align-self:center"></span>
+        <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Add</button>
+      </form>
+      ${list.length? list.map(x=>`<div class="row"><div style="display:flex;gap:12px;align-items:center;flex:1">
+        ${x.receipt?(x.receipt.type==='application/pdf'?`<button class="del" data-viewreceipt="${x.id}" style="width:48px;height:48px;flex:none;border:1px solid var(--line);border-radius:6px;background:var(--cream)">📄</button>`:`<img src="${x.receipt.dataUrl}" data-viewreceipt="${x.id}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex:none;cursor:pointer">`):''}
+        <div class="txt"><b>${escapeHtml(x.label)}</b></div></div>
+        <div class="meta">AED ${x.amount} <button class="del" data-del="${x.id}">remove</button></div></div>`).join('') : '<div class="empty">No receipts logged yet.</div>'}
+    </div>`;
+  el.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{ expenseTab=b.dataset.tab; renderView(); });
+  let pendingReceipt = null;
+  const attachFile = async(file)=>{
+    if(!file) return;
+    if(file.type && file.type.startsWith('image/')){
+      const compressed = await compressImage(file);
+      pendingReceipt = {dataUrl: compressed || '', type:'image/jpeg', name:file.name};
+      el.querySelector('#receiptName').textContent = file.name;
+    } else {
+      const r = new FileReader();
+      r.onload=()=>{ pendingReceipt = {dataUrl:r.result, type:file.type, name:file.name}; el.querySelector('#receiptName').textContent = file.name; };
+      r.readAsDataURL(file);
+    }
+  };
+  const rc = el.querySelector('#receiptCamera');
+  rc.onchange=()=>attachFile(rc.files[0]);
+  const rf = el.querySelector('#receiptFile');
+  rf.onchange=()=>attachFile(rf.files[0]);
+  el.querySelectorAll('[data-viewreceipt]').forEach(b=>b.onclick=()=>{
+    const x = data.expenses.find(e=>e.id==b.dataset.viewreceipt);
+    if(x && x.receipt) viewReceipt(x.receipt.dataUrl);
+  });
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this expense? This cannot be undone.')) return;
+    data.expenses=data.expenses.filter(x=>x.id!=b.dataset.del); save('expenses'); renderView();
+  });
+  el.querySelector('#addForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    data.expenses.push({id:Date.now(),label:f.get('label'),amount:f.get('amount'),category:expenseTab,date:todayISO(),receipt:pendingReceipt});
+    save('expenses'); e.target.reset(); renderView();
+  };
+}
+
+function renderCalendar(el){
+  const now = new Date(); const y=now.getFullYear(), m=now.getMonth();
+  const first = new Date(y,m,1); const startDow=(first.getDay()+6)%7; // Mon start
+  const daysInMonth = new Date(y,m+1,0).getDate();
+  const items = [...data.tasks].filter(t=>t.due);
+  let cells='';
+  for(let i=0;i<startDow;i++) cells+=`<div class="d out"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const has = items.some(t=>t.due===iso);
+    const isToday = iso===todayISO();
+    cells += `<div class="d${isToday?' today':''}">${d}${has?'<div class="dot"></div>':''}</div>`;
+  }
+  el.innerHTML = `<div class="eyebrow">CALENDAR</div><h1 class="title">${now.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</h1><div class="sub">Tasks with a due date, at a glance</div>
+    <div class="panel"><div class="calgrid">${cells}</div></div>`;
+}
+
+function renderSchedule(el){
+  const items = [...data.schedule].sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
+  el.innerHTML = `<div class="eyebrow">SCHEDULE</div><h1 class="title">Schedule</h1><div class="sub">Meetings and time-blocked items</div>
+    <div class="panel">
+      <form class="inline" id="addForm">
+        <input type="text" name="title" placeholder="Meeting or event…" required>
+        <input type="date" name="date" required>
+        <input type="time" name="start" required>
+        <input type="time" name="end">
+        <button type="submit">Add</button>
+      </form>
+      ${items.length? items.map(x=>`<div class="row" data-search="${escapeHtml(x.title)}"><div class="txt"><b>${escapeHtml(x.title)}</b><p>${fmtDate(x.date)} &middot; ${x.start}${x.end?' – '+x.end:''}</p></div>
+        <div class="meta"><button class="del" data-edit="${x.id}">edit</button> <button class="del" data-del="${x.id}">remove</button></div></div>`).join('')
+        : '<div class="empty">Nothing scheduled yet.</div>'}
+    </div>`;
+  el.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{
+    const it=data.schedule.find(i=>i.id==b.dataset.edit);
+    const t=prompt('Edit title:', it.title); if(t===null) return;
+    it.title=t; save('schedule'); renderView();
+  });
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this from the schedule?')) return;
+    data.schedule=data.schedule.filter(i=>i.id!=b.dataset.del); save('schedule'); renderView();
+  });
+  el.querySelector('#addForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    data.schedule.push({id:Date.now(),title:f.get('title'),date:f.get('date'),start:f.get('start'),end:f.get('end')||''});
+    save('schedule'); e.target.reset(); renderView();
+  };
+}
+
+let currentTaskId = null;
+function renderTaskDetail(el){
+  const it = data.tasks.find(x=>x.id==currentTaskId);
+  if(!it){ currentTaskId=null; return renderList(el,'tasks','Tasks','What needs doing'); }
+  const c = it.customer||{};
+  el.innerHTML = `<button class="backlink" id="backBtn">← All tasks</button>
+    <div class="eyebrow">TASK</div><h1 class="title">${escapeHtml(it.title)}</h1>
+    <div class="sub">${[fmtDate(it.due),it.tag,it.priority,it.project].filter(Boolean).join(' · ')}</div>
+    <div class="panel">
+      <h2>Customer details</h2>
+      <form id="custForm" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <input type="text" name="name" placeholder="Name" value="${escapeHtml(c.name||'')}" style="flex:1;min-width:130px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="phone" placeholder="Phone" value="${escapeHtml(c.phone||'')}" style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="location" placeholder="Location" value="${escapeHtml(c.location||'')}" style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="villa" placeholder="Villa #" value="${escapeHtml(c.villa||'')}" style="flex:1;min-width:90px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Save</button>
+      </form>
+      ${c.location?`<div style="display:flex;gap:16px;margin-top:10px">
+        <a href="${escapeHtml(mapsLink(c.location))}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--forest);font-weight:600;text-decoration:none">📍 Open in Maps</a>
+        <a href="${escapeHtml(wazeLink(c.location))}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--forest);font-weight:600;text-decoration:none">🚗 Open in Waze</a>
+      </div>`:''}
+    </div>
+    <div class="panel">
+      <h2>Visit reminder</h2>
+      <form id="remindForm" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+        <input type="date" name="due" value="${it.due||''}" style="padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="time" name="visitTime" value="${it.visitTime||''}" style="padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <select name="remindBefore" style="padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+          <option value="" ${!it.remindBefore?'selected':''}>No reminder</option>
+          <option value="0" ${it.remindBefore==='0'?'selected':''}>Remind at the time</option>
+          <option value="30" ${it.remindBefore==='30'?'selected':''}>30 min before</option>
+          <option value="60" ${it.remindBefore==='60'?'selected':''}>1 hour before</option>
+          <option value="180" ${it.remindBefore==='180'?'selected':''}>3 hours before</option>
+          <option value="1440" ${it.remindBefore==='1440'?'selected':''}>1 day before</option>
+          <option value="2880" ${it.remindBefore==='2880'?'selected':''}>2 days before</option>
+        </select>
+        <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Save</button>
+      </form>
+      ${it.remindBefore?`<p style="margin:8px 0 0;color:var(--ink-soft);font-size:12.8px">You'll be notified while the app is open, on this device.</p>`:''}
+    </div>
+    <div class="panel">
+      <button class="addbtn" id="surveyBtn">${it.surveyId?'Open site survey':'Start site survey'}</button>
+      <button class="del" id="markDone" style="margin-left:14px">${it.done?'Mark not done':'Mark done'}</button>
+      <button class="del" id="delTask" style="margin-left:14px">Remove task</button>
+    </div>`;
+  el.querySelector('#backBtn').onclick=()=>{ currentTaskId=null; renderView(); };
+  el.querySelector('#custForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    it.customer = {name:f.get('name'),phone:f.get('phone'),location:f.get('location'),villa:f.get('villa')};
+    save('tasks'); renderView();
+  };
+  el.querySelector('#remindForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    it.due=f.get('due')||''; it.visitTime=f.get('visitTime')||''; it.remindBefore=f.get('remindBefore')||'';
+    it.notifiedVisit=false;
+    save('tasks'); renderView();
+  };
+  el.querySelector('#markDone').onclick=()=>{ it.done=!it.done; save('tasks'); renderNav(); renderView(); };
+  el.querySelector('#delTask').onclick=()=>{
+    if(!confirm('Remove this task? This cannot be undone.')) return;
+    data.tasks=data.tasks.filter(t=>t.id!=it.id); save('tasks'); currentTaskId=null; renderNav(); renderView();
+  };
+  el.querySelector('#surveyBtn').onclick=()=>{
+    if(it.surveyId && data.surveys.find(s=>s.id===it.surveyId)){
+      currentSurveyId = it.surveyId;
+    } else {
+      const cc = it.customer||{};
+      const s = {id:Date.now(),customer:cc.name||it.title,phone:cc.phone||'',city:cc.location||'',villa:cc.villa||'',date:it.due||todayISO(),sections:[]};
+      data.surveys.unshift(s); it.surveyId = s.id; save('surveys'); save('tasks');
+      currentSurveyId = s.id;
+    }
+    currentTaskId = null; current='surveys'; renderNav(); renderView();
+  };
+}
+
+let currentSurveyId = null;
+function renderSurveys(el){
+  if(currentSurveyId) return renderSurveyDetail(el);
+  const items = [...data.surveys].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  el.innerHTML = `<div class="eyebrow">SITE SURVEYS</div><h1 class="title">Site Surveys</h1><div class="sub">Measurements, photos and customer needs per garden area — for building the BOQ later</div>
+    <div class="panel">
+      <form id="addForm" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <input type="text" name="customer" placeholder="Customer name" required style="flex:1;min-width:130px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="phone" placeholder="Phone number" style="flex:1;min-width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="city" placeholder="City" style="flex:1;min-width:100px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="text" name="villa" placeholder="Villa number" style="flex:1;min-width:100px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="date" name="date" value="${todayISO()}" style="padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Start survey</button>
+      </form>
+      ${items.length? items.map(s=>`<div class="survcard" data-open="${s.id}"><b>${escapeHtml(s.customer||'Untitled')}</b><p style="margin:4px 0 0;color:var(--ink-soft);font-size:12.8px">${[s.villa&&`Villa ${escapeHtml(s.villa)}`,s.city&&escapeHtml(s.city),s.phone&&escapeHtml(s.phone)].filter(Boolean).join(' · ')} — ${fmtDate(s.date)} · ${(s.sections||[]).length} area${(s.sections||[]).length===1?'':'s'}</p></div>`).join('')
+        : '<div class="empty">No surveys yet — start one above before your next site visit.</div>'}
+    </div>`;
+  el.querySelectorAll('[data-open]').forEach(c=>c.onclick=()=>{ currentSurveyId=c.dataset.open; renderView(); });
+  el.querySelector('#addForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    const s={id:Date.now(),customer:f.get('customer'),phone:f.get('phone'),city:f.get('city'),villa:f.get('villa'),date:f.get('date'),sections:[]};
+    data.surveys.unshift(s); save('surveys'); currentSurveyId=s.id; renderView();
+  };
+}
+function renderSurveyDetail(el){
+  const s = data.surveys.find(x=>x.id==currentSurveyId);
+  if(!s){ currentSurveyId=null; return renderSurveys(el); }
+  el.innerHTML = `<button class="backlink" id="backBtn">← All surveys</button>
+    <div class="eyebrow">SITE SURVEY</div><h1 class="title">${escapeHtml(s.customer||'Untitled')}</h1>
+    <div class="sub">${[s.villa&&`Villa ${escapeHtml(s.villa)}`,s.city&&`<a href="${escapeHtml(mapsLink(s.city))}" target="_blank" rel="noopener" style="color:var(--forest);font-weight:600">📍 ${escapeHtml(s.city)}</a>`,s.phone&&escapeHtml(s.phone),fmtDate(s.date)].filter(Boolean).join(' · ')} <button class="del" id="editSurvey">edit details</button></div>
+    <div class="panel">
+      <h2>Quotation reminder</h2>
+      <div class="count">${(()=>{ const t=data.tasks.find(x=>x.id===s.quotationTaskId); return t ? `You'll be reminded on ${fmtDate(t.due)} to send the quotation.` : "Tell the customer a timeframe, then set a reminder here so it doesn't slip."; })()}</div>
+      <form id="quoteForm" style="display:flex;gap:8px;align-items:center;margin-top:10px">
+        <span style="font-size:13px">Send quotation in</span>
+        <input type="number" name="days" min="1" value="2" style="width:64px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <span style="font-size:13px">day(s)</span>
+        <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Set reminder</button>
+      </form>
+    </div>
+    <div class="panel">
+      <button class="addbtn" id="printBtn" style="margin-bottom:14px">🖨 Print this survey</button>
+      <form class="inline" id="addSection">
+        <input type="text" name="name" placeholder="Area name (e.g. Front Garden)…" required>
+        <input type="text" name="measurements" placeholder="Measurements (e.g. 12m x 8m)">
+        <button type="submit">Add area</button>
+      </form>
+      ${(s.sections||[]).map(sec=>`<div class="panel" data-sec="${sec.id}" style="background:var(--cream)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start"><div><b>${escapeHtml(sec.name)}</b>${sec.measurements?` <span style="color:var(--ink-soft);font-size:12.8px">— ${escapeHtml(sec.measurements)}</span>`:''}</div><button class="del" data-delsec="${sec.id}">remove area</button></div>
+        ${(sec.photos||[]).map(p=>`<div class="photoitem" style="display:flex;gap:12px;border-top:1px solid var(--line);padding:12px 0">
+          <img src="${p.image}" style="width:140px;height:100px;object-fit:cover;border-radius:6px;flex:none">
+          <div style="flex:1"><p style="margin:0;font-size:13px;white-space:pre-wrap">${escapeHtml(p.explanation||'')}</p></div>
+          <button class="del" data-delphoto="${sec.id}:${p.id}" style="align-self:flex-start">remove</button>
+        </div>`).join('')}
+        <form class="addphoto" data-secid="${sec.id}" style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <label class="filebtn" style="cursor:pointer">📷 Add photo<input type="file" accept="image/*" required style="display:none"></label>
+          <input type="text" placeholder="Explanation / customer need for this photo…" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+          <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 14px;font-weight:600;font-size:13px">Add</button>
+        </form>
+      </div>`).join('') || '<div class="empty">No areas yet — add one above.</div>'}
+    </div>`;
+  el.querySelector('#backBtn').onclick=()=>{ currentSurveyId=null; renderView(); };
+  el.querySelector('#printBtn').onclick=()=>window.print();
+  el.querySelector('#quoteForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    const days = Math.max(1, Number(f.get('days'))||1);
+    const due = new Date(); due.setDate(due.getDate()+days);
+    const dueISO = due.toISOString().slice(0,10);
+    let t = data.tasks.find(x=>x.id===s.quotationTaskId);
+    if(t){ t.due = dueISO; t.done=false; }
+    else{
+      t = {id:Date.now(),title:`Send quotation — ${s.customer||'customer'}`,tag:'work',priority:'reminder',due:dueISO,recur:'',project:'',
+        customer:{name:s.customer||'',phone:s.phone||'',location:s.city||'',villa:s.villa||''},surveyId:s.id,done:false};
+      data.tasks.push(t); s.quotationTaskId = t.id;
+    }
+    save('tasks'); save('surveys'); renderView();
+  };
+  el.querySelector('#editSurvey').onclick=()=>{
+    const customer=prompt('Customer name:', s.customer||''); if(customer===null) return;
+    const phone=prompt('Phone number:', s.phone||'');
+    const city=prompt('City:', s.city||'');
+    const villa=prompt('Villa number:', s.villa||'');
+    s.customer=customer; s.phone=phone; s.city=city; s.villa=villa; save('surveys'); renderView();
+  };
+  el.querySelectorAll('[data-delsec]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this whole area, including its photos? This cannot be undone.')) return;
+    s.sections = s.sections.filter(sec=>sec.id!=b.dataset.delsec); save('surveys'); renderView();
+  });
+  el.querySelectorAll('[data-delphoto]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this photo?')) return;
+    const [secId,photoId] = b.dataset.delphoto.split(':');
+    const sec = s.sections.find(x=>x.id==secId);
+    sec.photos = (sec.photos||[]).filter(p=>p.id!=photoId);
+    save('surveys'); renderView();
+  });
+  el.querySelector('#addSection').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target);
+    s.sections = s.sections||[];
+    s.sections.push({id:Date.now(),name:f.get('name'),measurements:f.get('measurements')||'',photos:[]});
+    save('surveys'); renderView();
+  };
+  el.querySelectorAll('form.addphoto').forEach(form=>{
+    form.onsubmit=async(e)=>{
+      e.preventDefault();
+      const secId = form.dataset.secid;
+      const sec = s.sections.find(x=>x.id==secId);
+      const file = form.querySelector('input[type=file]').files[0];
+      const explanation = form.querySelector('input[type=text]').value;
+      if(!file) return;
+      const image = await compressImage(file);
+      sec.photos=sec.photos||[]; sec.photos.push({id:Date.now(),image:image||'',explanation}); save('surveys'); renderView();
+    };
+  });
+}
+
+function renderSettings(el){
+  const hasPin = !!store.get('pin','');
+  const notifSupported = 'Notification' in window;
+  const notifPerm = notifSupported ? Notification.permission : 'unsupported';
+  el.innerHTML = `<div class="eyebrow">SETTINGS</div><h1 class="title">Settings</h1><div class="sub">Background, backup, and privacy</div>
+    <div class="panel">
+      <h2>Desktop notifications</h2>
+      <div class="count">${!notifSupported?'Not supported in this browser.':notifPerm==='granted'?"Enabled — you'll get a notification when something is overdue or due today, while this tab is open.":notifPerm==='denied'?'Blocked by the browser. Click the lock/info icon in the address bar → Notifications → Allow, then reload.':'Not enabled yet.'}</div>
+      ${notifSupported && notifPerm==='default'?'<button class="addbtn" id="enableNotif">Enable notifications</button>':''}
+    </div>
+    <div class="panel">
+      <h2>Background photos</h2>
+      <div class="count">A faint photo rotates behind your pages, changing each hour</div>
+      <label class="filebtn" style="cursor:pointer">📷 Add photo<input type="file" id="bgFile" accept="image/*" style="display:none"></label>
+      <div class="bggrid">${data.backgrounds.map((b,i)=>`<div class="bgthumb"><img src="${b}"><button data-bgdel="${i}">remove</button></div>`).join('')}</div>
+      ${!data.backgrounds.length?'<div class="empty">No photos yet.</div>':''}
+    </div>
+    <div class="panel">
+      <h2>Cloud sync</h2>
+      <div class="count">${syncStatus==='connected'?'Connected — changes sync live across every device open on this app.':syncStatus==='checking'?'Connecting…':'Could not reach the cloud database right now — check your internet connection. Your data is still safe locally.'}</div>
+    </div>
+    <div class="panel">
+      <h2>Backup</h2>
+      <div class="count">Download everything, then restore that file on your other device — this is how to move data across devices on a personal account</div>
+      <button class="addbtn" id="exportBtn" style="margin-right:8px">Download backup (.json)</button>
+      <label class="filebtn" style="cursor:pointer">Restore from file<input type="file" id="importFile" accept="application/json" style="display:none"></label>
+    </div>
+    <div class="panel">
+      <h2>PIN lock</h2>
+      <div class="count">${hasPin?'A PIN is set on this device.':'No PIN set — anyone with this link can open the app.'}</div>
+      <form class="inline" id="pinForm"><input type="text" inputmode="numeric" maxlength="6" name="pin" placeholder="New 4–6 digit PIN"><button type="submit">${hasPin?'Change PIN':'Set PIN'}</button>${hasPin?'<button type="button" class="del" id="removePin">Remove PIN</button>':''}</form>
+    </div>`;
+  el.querySelector('#bgFile').onchange=async(e)=>{
+    const file=e.target.files[0]; if(!file) return;
+    const photo = await compressImage(file, 1600, 0.75);
+    if(photo){ data.backgrounds.push(photo); save('backgrounds'); renderView(); applyBackground(); }
+  };
+  el.querySelectorAll('[data-bgdel]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this background photo?')) return;
+    data.backgrounds.splice(Number(b.dataset.bgdel),1); save('backgrounds'); renderView(); applyBackground();
+  });
+  el.querySelector('#exportBtn').onclick=()=>{
+    const payload = JSON.stringify(data, null, 2);
+    const a=document.createElement('a'); a.href='data:application/json,'+encodeURIComponent(payload); a.download='daily-manager-backup.json'; a.click();
+  };
+  el.querySelector('#importFile').onchange=(e)=>{
+    const file=e.target.files[0]; if(!file) return;
+    const r=new FileReader(); r.onload=()=>{
+      try{ const incoming=JSON.parse(r.result);
+        SYNC_KEYS.forEach(k=>{ if(Array.isArray(incoming[k])) data[k]=incoming[k]; });
+        SYNC_KEYS.forEach(save);
+        renderNav(); renderView(); applyBackground();
+      }catch(err){ alert('That file could not be read as a backup.'); }
+    }; r.readAsText(file);
+  };
+  el.querySelector('#pinForm').onsubmit=(e)=>{
+    e.preventDefault(); const f=new FormData(e.target); const p=(f.get('pin')||'').trim();
+    if(p && /^\d{4,6}$/.test(p)){ store.set('pin', p); renderView(); } else if(p){ alert('PIN must be 4–6 digits.'); }
+  };
+  const rp = el.querySelector('#removePin'); if(rp) rp.onclick=()=>{ localStorage.removeItem('mdm_pin'); renderView(); };
+  const nb = el.querySelector('#enableNotif'); if(nb) nb.onclick=()=>{ Notification.requestPermission().then(()=>{ renderView(); checkNotify(); }); };
+}
+
+document.getElementById('quickAddBtn').onclick=()=>{ current='tasks'; renderNav(); renderView(); document.querySelector('#addForm input[type=text]')?.focus(); };
+document.getElementById('search').oninput=(e)=>{
+  const q=e.target.value.toLowerCase().trim();
+  document.querySelectorAll('[data-search]').forEach(row=>{
+    row.style.display = (!q || row.dataset.search.toLowerCase().includes(q)) ? '' : 'none';
+  });
+};
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = document.getElementById('micBtn');
+if(!SR){ micBtn.disabled = true; micBtn.title = 'Voice input not supported in this browser'; }
+else{
+  const rec = new SR(); rec.lang='en-US'; rec.interimResults=false;
+  let listening=false;
+  micBtn.onclick=()=>{
+    if(listening) return;
+    listening=true; micBtn.classList.add('on');
+    rec.start();
+  };
+  rec.onresult=(e)=>{
+    const text = e.results[0][0].transcript;
+    data.tasks.push({id:Date.now(),title:text,tag:'work',priority:'',due:todayISO(),recur:'',done:false});
+    save('tasks'); current='tasks'; renderNav(); renderView();
+  };
+  rec.onend=()=>{ listening=false; micBtn.classList.remove('on'); };
+  rec.onerror=()=>{ listening=false; micBtn.classList.remove('on'); };
+}
+
+renderNav();
+renderView();
+applyBackground();
+initCloud();
+function checkNotify(){
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  const t = todayISO();
+  const overdue = data.tasks.filter(x=>!x.done && x.due && x.due<t).length;
+  const dueToday = data.tasks.filter(x=>!x.done && x.due===t).length;
+  if(overdue || dueToday){
+    const sig = `${overdue}-${dueToday}-${t}`;
+    if(store.get('notifSig','')!==sig){
+      store.set('notifSig', sig);
+      const parts=[]; if(overdue) parts.push(`${overdue} overdue`); if(dueToday) parts.push(`${dueToday} due today`);
+      try{ new Notification('Daily Manager', {body: parts.join(' · ')}); }catch(e){}
+    }
+  }
+  const now = new Date();
+  let changed=false;
+  data.tasks.forEach(x=>{
+    if(x.done || !x.due || x.remindBefore==='' || x.remindBefore==null || x.notifiedVisit) return;
+    const visitAt = new Date(`${x.due}T${x.visitTime||'09:00'}:00`);
+    const fireAt = new Date(visitAt.getTime() - Number(x.remindBefore)*60000);
+    if(now >= fireAt){
+      const when = x.visitTime ? `at ${x.visitTime}` : `on ${fmtDate(x.due)}`;
+      try{ new Notification('Site visit reminder', {body: `${x.title} — ${when}`}); }catch(e){}
+      x.notifiedVisit = true; changed=true;
+    }
+  });
+  if(changed) save('tasks');
+}
+checkNotify();
+setInterval(checkNotify, 5*60*1000);
+(function checkLock(){
+  const pin = store.get('pin','');
+  if(!pin) return;
+  const overlay = document.createElement('div');
+  overlay.style = 'position:fixed;inset:0;background:var(--forest-deep);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:999;padding-top:env(safe-area-inset-top,0px)';
+  overlay.innerHTML = `<div style="font-family:Fraunces,serif;font-size:20px">Enter PIN</div><input id="pinInput" type="password" inputmode="numeric" maxlength="6" style="font-size:22px;text-align:center;letter-spacing:6px;padding:10px 16px;border-radius:8px;border:none;width:160px"><div id="pinErr" style="color:#E7A9A9;font-size:13px;height:16px"></div>`;
+  document.body.appendChild(overlay);
+  document.querySelector('.app').style.visibility='hidden';
+  const input = overlay.querySelector('#pinInput'); input.focus();
+  input.oninput=()=>{
+    if(input.value.length>=pin.length){
+      if(input.value===pin){ overlay.remove(); document.querySelector('.app').style.visibility='visible'; }
+      else { document.getElementById('pinErr').textContent='Incorrect PIN'; input.value=''; }
+    }
+  };
+})();
+</script>
+</body>
+</html>
