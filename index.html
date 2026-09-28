@@ -315,11 +315,12 @@ function renderToday(el){
     </div>`;
   el.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.onchange=()=>toggleTask(Number(cb.dataset.id)));
   el.querySelectorAll('[data-tf]').forEach(b=>b.onclick=()=>{ todayFilter=b.dataset.tf; renderView(); });
+  el.querySelectorAll('[data-opentask]').forEach(b=>b.onclick=()=>{ currentTaskId=b.dataset.opentask; current='tasks'; renderNav(); renderView(); });
 }
 
 function rowHtml(x){
   return `<div class="row"><input type="checkbox" data-id="${x.id}" ${x.done?'checked':''}>
-    <div class="txt"><b>${escapeHtml(x.title)}</b>${x.note?`<p>${escapeHtml(x.note)}</p>`:''}
+    <div class="txt"><b data-opentask="${x.id}" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--line)">${escapeHtml(x.title)}</b>${x.note?`<p>${escapeHtml(x.note)}</p>`:''}
     <div style="margin-top:6px">${tagHtml(x.tag)}${x.priority?tagHtml(x.priority):''}</div></div>
     <div class="meta">${fmtDate(x.due)}</div></div>`;
 }
