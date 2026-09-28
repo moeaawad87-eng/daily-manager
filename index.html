@@ -155,6 +155,7 @@ main.has-bg>*{position:relative;z-index:1}
     <div class="topbar">
       <input class="search" placeholder="Search anything…" id="search">
       <button class="mic" id="micBtn" title="Add a task by voice">🎙</button>
+      <button class="mic" id="newWinBtn" title="Open in a new window">⧉</button>
       <button class="addbtn" id="quickAddBtn">+ Add new</button>
     </div>
     <div id="view"></div>
@@ -177,6 +178,7 @@ let data = {
   backgrounds: store.get('backgrounds', []),
   schedule: store.get('schedule', []),
   surveys: store.get('surveys', []),
+  scratch: store.get('scratch', ['']),
 };
 const firebaseConfig = {
   apiKey: "AIzaSyBvQ1-8G5H-_YnX3Cvna7i6nwWaykxKU_M",
@@ -187,7 +189,7 @@ const firebaseConfig = {
   appId: "1:510364490724:web:6862b52337d98a3f5005f1"
 };
 firebase.initializeApp(firebaseConfig);
-const SYNC_KEYS = ['tasks','notes','followups','projects','expenses','backgrounds','schedule','surveys'];
+const SYNC_KEYS = ['tasks','notes','followups','projects','expenses','backgrounds','schedule','surveys','scratch'];
 const fsdocs = {}; SYNC_KEYS.forEach(k=>{ fsdocs[k] = firebase.firestore().collection('app').doc(k); });
 let cloudReady=false;
 const syncTimers = {}, applyingRemote = {};
@@ -231,9 +233,9 @@ async function initCloud(){
   }catch(e){ syncStatus='unavailable'; if(current==='settings') renderView(); }
 }
 
-const views = ['today','calendar','schedule','tasks','followups','projects','surveys','notes','expenses','settings'];
-const icons = {today:'☀',calendar:'▦',schedule:'⏰',tasks:'☑',followups:'↻',projects:'◧',surveys:'📐',notes:'▤',expenses:'▢',settings:'⚙'};
-const labels = {followups:'Follow-ups',settings:'Settings',surveys:'Site Surveys'};
+const views = ['today','calendar','schedule','tasks','followups','projects','surveys','notes','scratch','expenses','settings'];
+const icons = {today:'☀',calendar:'▦',schedule:'⏰',tasks:'☑',followups:'↻',projects:'◧',surveys:'📐',notes:'▤',scratch:'✎',expenses:'▢',settings:'⚙'};
+const labels = {followups:'Follow-ups',settings:'Settings',surveys:'Site Surveys',scratch:'Scratchpad'};
 let current = 'today';
 
 function renderNav(){
@@ -278,6 +280,7 @@ function renderView(){
   if(current==='followups') return renderList(el,'followups','Follow-ups','People and things to chase');
   if(current==='projects') return renderProjects(el);
   if(current==='notes') return renderNotes(el);
+  if(current==='scratch') return renderScratch(el);
   if(current==='expenses') return renderExpenses(el);
   if(current==='schedule') return renderSchedule(el);
   if(current==='surveys') return renderSurveys(el);
@@ -514,6 +517,27 @@ function renderNotes(el){
     const push=(photo)=>{ data.notes.unshift({id:Date.now(),title:f.get('title'),body:f.get('body'),photo:photo||''}); save('notes'); e.target.reset(); renderView(); };
     if(file && file.size){ const photo = await compressImage(file); push(photo||''); }
     else push('');
+  };
+}
+
+let scratchSaveTimer=null;
+function renderScratch(el){
+  const text = (data.scratch && data.scratch[0]) || '';
+  el.innerHTML = `<div class="eyebrow">SCRATCHPAD</div><h1 class="title">Scratchpad</h1><div class="sub">A free space to think out loud — saves automatically as you type</div>
+    <div class="panel">
+      <textarea id="scratchArea" placeholder="Start writing…" style="width:100%;min-height:60vh;padding:14px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);font-family:inherit;font-size:15px;line-height:1.6;resize:vertical">${escapeHtml(text)}</textarea>
+      <div id="scratchSaved" style="margin-top:8px;font-size:12.5px;color:var(--ink-soft)">&nbsp;</div>
+    </div>`;
+  const ta = el.querySelector('#scratchArea');
+  const status = el.querySelector('#scratchSaved');
+  ta.oninput = ()=>{
+    clearTimeout(scratchSaveTimer);
+    status.textContent = 'Saving…';
+    scratchSaveTimer = setTimeout(()=>{
+      data.scratch = [ta.value];
+      save('scratch');
+      status.textContent = 'Saved';
+    }, 500);
   };
 }
 
@@ -941,6 +965,7 @@ function renderSettings(el){
 }
 
 document.getElementById('quickAddBtn').onclick=()=>{ current='tasks'; renderNav(); renderView(); document.querySelector('#addForm input[type=text]')?.focus(); };
+document.getElementById('newWinBtn').onclick=()=>{ window.open(location.href, '_blank'); };
 document.getElementById('search').oninput=(e)=>{
   const q=e.target.value.toLowerCase().trim();
   document.querySelectorAll('[data-search]').forEach(row=>{
