@@ -302,11 +302,11 @@ function renderToday(el){
       <div style="display:flex;gap:6px">${['all','work','personal'].map(f=>`<button data-tf="${f}" style="border:1px solid var(--line);background:${todayFilter===f?'var(--forest)':'var(--paper)'};color:${todayFilter===f?'#fff':'var(--ink)'};border-radius:7px;padding:6px 12px;font-size:12.5px;font-weight:600">${f[0].toUpperCase()+f.slice(1)}</button>`).join('')}</div>
     </div>
     <div class="stats">
-      <div class="stat" style="--c:var(--clay)"><div class="num">${overdue.length}</div><div class="lbl">Overdue</div></div>
-      <div class="stat" style="--c:var(--ok)"><div class="num">${dueToday.length}</div><div class="lbl">Due today</div></div>
-      <div class="stat" style="--c:var(--sky)"><div class="num">${data.projects.filter(p=>p.status==='active').length}</div><div class="lbl">Active projects</div></div>
-      <div class="stat" style="--c:var(--gold)"><div class="num">${data.followups.filter(f=>!f.done).length}</div><div class="lbl">Follow-ups</div></div>
-      <div class="stat" style="--c:var(--plum)"><div class="num">AED ${data.expenses.filter(e=>(e.date||'').slice(0,7)===todayISO().slice(0,7)).reduce((s,e)=>s+Number(e.amount||0),0).toFixed(0)}</div><div class="lbl">Spent this month</div></div>
+      <div class="stat" data-stat="overdue" style="--c:var(--clay);cursor:pointer"><div class="num">${overdue.length}</div><div class="lbl">Overdue</div></div>
+      <div class="stat" data-stat="duetoday" style="--c:var(--ok);cursor:pointer"><div class="num">${dueToday.length}</div><div class="lbl">Due today</div></div>
+      <div class="stat" data-stat="projects" style="--c:var(--sky);cursor:pointer"><div class="num">${data.projects.filter(p=>p.status==='active').length}</div><div class="lbl">Active projects</div></div>
+      <div class="stat" data-stat="followups" style="--c:var(--gold);cursor:pointer"><div class="num">${data.followups.filter(f=>!f.done).length}</div><div class="lbl">Follow-ups</div></div>
+      <div class="stat" data-stat="expenses" style="--c:var(--plum);cursor:pointer"><div class="num">AED ${data.expenses.filter(e=>(e.date||'').slice(0,7)===todayISO().slice(0,7)).reduce((s,e)=>s+Number(e.amount||0),0).toFixed(0)}</div><div class="lbl">Spent this month</div></div>
     </div>
     <div class="panel">
       <h2>Overdue</h2>
