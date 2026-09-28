@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mohamad Daily Manager</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Daily Manager">
+<meta name="theme-color" content="#123B2E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -180,13 +187,15 @@ const firebaseConfig = {
   appId: "1:510364490724:web:6862b52337d98a3f5005f1"
 };
 firebase.initializeApp(firebaseConfig);
-const fsdoc = firebase.firestore().collection('app').doc('main');
-let cloudReady=false, syncTimer=null, applyingRemote=false;
-function save(k){ store.set(k, data[k]); queueCloudSync(); }
-function queueCloudSync(){
-  if(applyingRemote) return;
-  clearTimeout(syncTimer);
-  syncTimer = setTimeout(()=>{ fsdoc.set(data).catch(()=>{}); }, 600);
+const SYNC_KEYS = ['tasks','notes','followups','projects','expenses','backgrounds','schedule','surveys'];
+const fsdocs = {}; SYNC_KEYS.forEach(k=>{ fsdocs[k] = firebase.firestore().collection('app').doc(k); });
+let cloudReady=false;
+const syncTimers = {}, applyingRemote = {};
+function save(k){ store.set(k, data[k]); queueCloudSync(k); }
+function queueCloudSync(k){
+  if(applyingRemote[k]) return;
+  clearTimeout(syncTimers[k]);
+  syncTimers[k] = setTimeout(()=>{ fsdocs[k].set({items:data[k]}).catch(()=>{}); }, 600);
 }
 let syncStatus = 'checking';
 async function initCloud(){
@@ -195,21 +204,29 @@ async function initCloud(){
       firebase.auth().signInAnonymously().catch(reject);
       firebase.auth().onAuthStateChanged(u=>{ if(u) resolve(); });
     });
-    const snap = await fsdoc.get();
-    if(snap.exists){
-      const remote = snap.data() || {};
-      ['tasks','notes','followups','projects','expenses','backgrounds','schedule','surveys'].forEach(k=>{ if(Array.isArray(remote[k])) data[k]=remote[k]; });
+    for(const k of SYNC_KEYS){
+      const snap = await fsdocs[k].get();
+      if(snap.exists){
+        const remote = snap.data();
+        if(remote && Array.isArray(remote.items)) data[k]=remote.items;
+      } else {
+        // First run after the storage upgrade: this category has no cloud copy yet.
+        // Push whatever is already saved on this device so nothing looks lost.
+        fsdocs[k].set({items: data[k]}).catch(()=>{});
+      }
     }
     cloudReady = true; syncStatus='connected';
     renderNav(); renderView(); applyBackground();
-    fsdoc.onSnapshot(snap=>{
-      if(!snap.exists || snap.metadata.hasPendingWrites) return;
-      const remote = snap.data() || {};
-      let changed=false;
-      ['tasks','notes','followups','projects','expenses','backgrounds','schedule','surveys'].forEach(k=>{
-        if(Array.isArray(remote[k]) && JSON.stringify(remote[k])!==JSON.stringify(data[k])){ data[k]=remote[k]; store.set(k,remote[k]); changed=true; }
+    SYNC_KEYS.forEach(k=>{
+      fsdocs[k].onSnapshot(snap=>{
+        if(!snap.exists || snap.metadata.hasPendingWrites) return;
+        const remote = snap.data();
+        if(!remote || !Array.isArray(remote.items)) return;
+        if(JSON.stringify(remote.items)!==JSON.stringify(data[k])){
+          data[k]=remote.items; store.set(k,remote.items);
+          applyingRemote[k]=true; renderNav(); renderView(); applyBackground(); applyingRemote[k]=false;
+        }
       });
-      if(changed){ applyingRemote=true; renderNav(); renderView(); applyBackground(); applyingRemote=false; }
     });
   }catch(e){ syncStatus='unavailable'; if(current==='settings') renderView(); }
 }
@@ -286,7 +303,7 @@ function renderToday(el){
       <div class="stat" style="--c:var(--ok)"><div class="num">${dueToday.length}</div><div class="lbl">Due today</div></div>
       <div class="stat" style="--c:var(--sky)"><div class="num">${data.projects.filter(p=>p.status==='active').length}</div><div class="lbl">Active projects</div></div>
       <div class="stat" style="--c:var(--gold)"><div class="num">${data.followups.filter(f=>!f.done).length}</div><div class="lbl">Follow-ups</div></div>
-      <div class="stat" style="--c:var(--plum)"><div class="num">AED ${data.expenses.reduce((s,e)=>s+Number(e.amount||0),0)}</div><div class="lbl">Spent this month</div></div>
+      <div class="stat" style="--c:var(--plum)"><div class="num">AED ${data.expenses.filter(e=>(e.date||'').slice(0,7)===todayISO().slice(0,7)).reduce((s,e)=>s+Number(e.amount||0),0).toFixed(0)}</div><div class="lbl">Spent this month</div></div>
     </div>
     <div class="panel">
       <h2>Overdue</h2>
@@ -326,6 +343,15 @@ function rowHtml(x){
 }
 function toggleTask(id){ const t=data.tasks.find(x=>x.id===id); if(t){ t.done=!t.done; save('tasks'); renderView(); } }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function mapsLink(loc){
+  if(!loc) return '';
+  if(/^https?:\/\//i.test(loc)) return loc;
+  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(loc);
+}
+function wazeLink(loc){
+  if(!loc) return '';
+  return 'https://waze.com/ul?q=' + encodeURIComponent(loc) + '&navigate=yes';
+}
 
 function nextDue(due,recur){
   const d = new Date(due+'T00:00:00');
@@ -376,7 +402,10 @@ function renderList(el,key,title,sub){
     if(it.done && it.recur && it.due){ items.push({...it,id:Date.now(),done:false,due:nextDue(it.due,it.recur)}); }
     save(key); renderNav(); renderView();
   });
-  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ data[key]=items.filter(i=>i.id!=b.dataset.del); save(key); renderNav(); renderView(); });
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this? This cannot be undone.')) return;
+    data[key]=items.filter(i=>i.id!=b.dataset.del); save(key); renderNav(); renderView();
+  });
   if(key==='tasks') el.querySelectorAll('[data-opentask]').forEach(b=>b.onclick=()=>{ currentTaskId=b.dataset.opentask; renderView(); });
   el.querySelectorAll('[data-startsurvey]').forEach(b=>b.onclick=()=>{
     const it = items.find(i=>i.id==b.dataset.startsurvey);
@@ -412,7 +441,10 @@ function renderProjects(el){
         </div>`;
       }).join('') : '<div class="empty">No projects yet.</div>'}</div>
     </div>`;
-  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ data.projects=data.projects.filter(p=>p.id!=b.dataset.del); save('projects'); renderView(); });
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this project?')) return;
+    data.projects=data.projects.filter(p=>p.id!=b.dataset.del); save('projects'); renderView();
+  });
   el.querySelectorAll('[data-tog]').forEach(b=>b.onclick=()=>{ const p=data.projects.find(p=>p.id==b.dataset.tog); p.status=p.status==='active'?'done':'active'; save('projects'); renderView(); });
   el.querySelector('#addForm').onsubmit=(e)=>{ e.preventDefault(); const f=new FormData(e.target); data.projects.push({id:Date.now(),name:f.get('name'),status:'active'}); save('projects'); e.target.reset(); renderView(); };
 }
@@ -434,15 +466,38 @@ function renderNotes(el){
     const body=prompt('Edit note:', n.body);
     n.title=t; n.body=body===null?n.body:body; save('notes'); renderView();
   });
-  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ data.notes=data.notes.filter(n=>n.id!=b.dataset.del); save('notes'); renderView(); });
-  el.querySelector('#addForm').onsubmit=(e)=>{
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this note?')) return;
+    data.notes=data.notes.filter(n=>n.id!=b.dataset.del); save('notes'); renderView();
+  });
+  el.querySelector('#addForm').onsubmit=async(e)=>{
     e.preventDefault(); const f=new FormData(e.target); const file=f.get('photo');
     const push=(photo)=>{ data.notes.unshift({id:Date.now(),title:f.get('title'),body:f.get('body'),photo:photo||''}); save('notes'); e.target.reset(); renderView(); };
-    if(file && file.size){ const r=new FileReader(); r.onload=()=>push(r.result); r.readAsDataURL(file); }
+    if(file && file.size){ const photo = await compressImage(file); push(photo||''); }
     else push('');
   };
 }
 
+function compressImage(file, maxDim, quality){
+  maxDim = maxDim || 1280; quality = quality || 0.72;
+  return new Promise((resolve)=>{
+    if(!file || !file.type || !file.type.startsWith('image/')){ resolve(null); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      let w=img.naturalWidth, h=img.naturalHeight;
+      if(w>maxDim || h>maxDim){
+        if(w>h){ h=Math.round(h*maxDim/w); w=maxDim; } else { w=Math.round(w*maxDim/h); h=maxDim; }
+      }
+      const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      try{ resolve(canvas.toDataURL('image/jpeg', quality)); }catch(e){ resolve(null); }
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
 function dataURLtoBlob(dataURL){
   const [meta, b64] = dataURL.split(',');
   const mime = meta.match(/:(.*?);/)[1];
@@ -488,11 +543,17 @@ function renderExpenses(el){
     </div>`;
   el.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{ expenseTab=b.dataset.tab; renderView(); });
   let pendingReceipt = null;
-  const attachFile = (file)=>{
+  const attachFile = async(file)=>{
     if(!file) return;
-    const r = new FileReader();
-    r.onload=()=>{ pendingReceipt = {dataUrl:r.result, type:file.type, name:file.name}; el.querySelector('#receiptName').textContent = file.name; };
-    r.readAsDataURL(file);
+    if(file.type && file.type.startsWith('image/')){
+      const compressed = await compressImage(file);
+      pendingReceipt = {dataUrl: compressed || '', type:'image/jpeg', name:file.name};
+      el.querySelector('#receiptName').textContent = file.name;
+    } else {
+      const r = new FileReader();
+      r.onload=()=>{ pendingReceipt = {dataUrl:r.result, type:file.type, name:file.name}; el.querySelector('#receiptName').textContent = file.name; };
+      r.readAsDataURL(file);
+    }
   };
   const rc = el.querySelector('#receiptCamera');
   rc.onchange=()=>attachFile(rc.files[0]);
@@ -502,10 +563,13 @@ function renderExpenses(el){
     const x = data.expenses.find(e=>e.id==b.dataset.viewreceipt);
     if(x && x.receipt) viewReceipt(x.receipt.dataUrl);
   });
-  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ data.expenses=data.expenses.filter(x=>x.id!=b.dataset.del); save('expenses'); renderView(); });
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this expense? This cannot be undone.')) return;
+    data.expenses=data.expenses.filter(x=>x.id!=b.dataset.del); save('expenses'); renderView();
+  });
   el.querySelector('#addForm').onsubmit=(e)=>{
     e.preventDefault(); const f=new FormData(e.target);
-    data.expenses.push({id:Date.now(),label:f.get('label'),amount:f.get('amount'),category:expenseTab,receipt:pendingReceipt});
+    data.expenses.push({id:Date.now(),label:f.get('label'),amount:f.get('amount'),category:expenseTab,date:todayISO(),receipt:pendingReceipt});
     save('expenses'); e.target.reset(); renderView();
   };
 }
@@ -547,7 +611,10 @@ function renderSchedule(el){
     const t=prompt('Edit title:', it.title); if(t===null) return;
     it.title=t; save('schedule'); renderView();
   });
-  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ data.schedule=data.schedule.filter(i=>i.id!=b.dataset.del); save('schedule'); renderView(); });
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this from the schedule?')) return;
+    data.schedule=data.schedule.filter(i=>i.id!=b.dataset.del); save('schedule'); renderView();
+  });
   el.querySelector('#addForm').onsubmit=(e)=>{
     e.preventDefault(); const f=new FormData(e.target);
     data.schedule.push({id:Date.now(),title:f.get('title'),date:f.get('date'),start:f.get('start'),end:f.get('end')||''});
@@ -572,6 +639,10 @@ function renderTaskDetail(el){
         <input type="text" name="villa" placeholder="Villa #" value="${escapeHtml(c.villa||'')}" style="flex:1;min-width:90px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
         <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Save</button>
       </form>
+      ${c.location?`<div style="display:flex;gap:16px;margin-top:10px">
+        <a href="${escapeHtml(mapsLink(c.location))}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--forest);font-weight:600;text-decoration:none">📍 Open in Maps</a>
+        <a href="${escapeHtml(wazeLink(c.location))}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--forest);font-weight:600;text-decoration:none">🚗 Open in Waze</a>
+      </div>`:''}
     </div>
     <div class="panel">
       <h2>Visit reminder</h2>
@@ -609,7 +680,10 @@ function renderTaskDetail(el){
     save('tasks'); renderView();
   };
   el.querySelector('#markDone').onclick=()=>{ it.done=!it.done; save('tasks'); renderNav(); renderView(); };
-  el.querySelector('#delTask').onclick=()=>{ data.tasks=data.tasks.filter(t=>t.id!=it.id); save('tasks'); currentTaskId=null; renderNav(); renderView(); };
+  el.querySelector('#delTask').onclick=()=>{
+    if(!confirm('Remove this task? This cannot be undone.')) return;
+    data.tasks=data.tasks.filter(t=>t.id!=it.id); save('tasks'); currentTaskId=null; renderNav(); renderView();
+  };
   el.querySelector('#surveyBtn').onclick=()=>{
     if(it.surveyId && data.surveys.find(s=>s.id===it.surveyId)){
       currentSurveyId = it.surveyId;
@@ -652,7 +726,7 @@ function renderSurveyDetail(el){
   if(!s){ currentSurveyId=null; return renderSurveys(el); }
   el.innerHTML = `<button class="backlink" id="backBtn">← All surveys</button>
     <div class="eyebrow">SITE SURVEY</div><h1 class="title">${escapeHtml(s.customer||'Untitled')}</h1>
-    <div class="sub">${[s.villa&&`Villa ${escapeHtml(s.villa)}`,s.city&&escapeHtml(s.city),s.phone&&escapeHtml(s.phone),fmtDate(s.date)].filter(Boolean).join(' · ')} <button class="del" id="editSurvey">edit details</button></div>
+    <div class="sub">${[s.villa&&`Villa ${escapeHtml(s.villa)}`,s.city&&`<a href="${escapeHtml(mapsLink(s.city))}" target="_blank" rel="noopener" style="color:var(--forest);font-weight:600">📍 ${escapeHtml(s.city)}</a>`,s.phone&&escapeHtml(s.phone),fmtDate(s.date)].filter(Boolean).join(' · ')} <button class="del" id="editSurvey">edit details</button></div>
     <div class="panel">
       <h2>Quotation reminder</h2>
       <div class="count">${(()=>{ const t=data.tasks.find(x=>x.id===s.quotationTaskId); return t ? `You'll be reminded on ${fmtDate(t.due)} to send the quotation.` : "Tell the customer a timeframe, then set a reminder here so it doesn't slip."; })()}</div>
@@ -708,9 +782,11 @@ function renderSurveyDetail(el){
     s.customer=customer; s.phone=phone; s.city=city; s.villa=villa; save('surveys'); renderView();
   };
   el.querySelectorAll('[data-delsec]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this whole area, including its photos? This cannot be undone.')) return;
     s.sections = s.sections.filter(sec=>sec.id!=b.dataset.delsec); save('surveys'); renderView();
   });
   el.querySelectorAll('[data-delphoto]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this photo?')) return;
     const [secId,photoId] = b.dataset.delphoto.split(':');
     const sec = s.sections.find(x=>x.id==secId);
     sec.photos = (sec.photos||[]).filter(p=>p.id!=photoId);
@@ -723,16 +799,15 @@ function renderSurveyDetail(el){
     save('surveys'); renderView();
   };
   el.querySelectorAll('form.addphoto').forEach(form=>{
-    form.onsubmit=(e)=>{
+    form.onsubmit=async(e)=>{
       e.preventDefault();
       const secId = form.dataset.secid;
       const sec = s.sections.find(x=>x.id==secId);
       const file = form.querySelector('input[type=file]').files[0];
       const explanation = form.querySelector('input[type=text]').value;
       if(!file) return;
-      const r=new FileReader();
-      r.onload=()=>{ sec.photos=sec.photos||[]; sec.photos.push({id:Date.now(),image:r.result,explanation}); save('surveys'); renderView(); };
-      r.readAsDataURL(file);
+      const image = await compressImage(file);
+      sec.photos=sec.photos||[]; sec.photos.push({id:Date.now(),image:image||'',explanation}); save('surveys'); renderView();
     };
   });
 }
@@ -769,11 +844,15 @@ function renderSettings(el){
       <div class="count">${hasPin?'A PIN is set on this device.':'No PIN set — anyone with this link can open the app.'}</div>
       <form class="inline" id="pinForm"><input type="text" inputmode="numeric" maxlength="6" name="pin" placeholder="New 4–6 digit PIN"><button type="submit">${hasPin?'Change PIN':'Set PIN'}</button>${hasPin?'<button type="button" class="del" id="removePin">Remove PIN</button>':''}</form>
     </div>`;
-  el.querySelector('#bgFile').onchange=(e)=>{
+  el.querySelector('#bgFile').onchange=async(e)=>{
     const file=e.target.files[0]; if(!file) return;
-    const r=new FileReader(); r.onload=()=>{ data.backgrounds.push(r.result); save('backgrounds'); renderView(); applyBackground(); }; r.readAsDataURL(file);
+    const photo = await compressImage(file, 1600, 0.75);
+    if(photo){ data.backgrounds.push(photo); save('backgrounds'); renderView(); applyBackground(); }
   };
-  el.querySelectorAll('[data-bgdel]').forEach(b=>b.onclick=()=>{ data.backgrounds.splice(Number(b.dataset.bgdel),1); save('backgrounds'); renderView(); applyBackground(); });
+  el.querySelectorAll('[data-bgdel]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Remove this background photo?')) return;
+    data.backgrounds.splice(Number(b.dataset.bgdel),1); save('backgrounds'); renderView(); applyBackground();
+  });
   el.querySelector('#exportBtn').onclick=()=>{
     const payload = JSON.stringify(data, null, 2);
     const a=document.createElement('a'); a.href='data:application/json,'+encodeURIComponent(payload); a.download='daily-manager-backup.json'; a.click();
@@ -782,8 +861,8 @@ function renderSettings(el){
     const file=e.target.files[0]; if(!file) return;
     const r=new FileReader(); r.onload=()=>{
       try{ const incoming=JSON.parse(r.result);
-        ['tasks','notes','followups','projects','expenses','backgrounds','schedule','surveys'].forEach(k=>{ if(Array.isArray(incoming[k])) data[k]=incoming[k]; });
-        ['tasks','notes','followups','projects','expenses','backgrounds','schedule','surveys'].forEach(save);
+        SYNC_KEYS.forEach(k=>{ if(Array.isArray(incoming[k])) data[k]=incoming[k]; });
+        SYNC_KEYS.forEach(save);
         renderNav(); renderView(); applyBackground();
       }catch(err){ alert('That file could not be read as a backup.'); }
     }; r.readAsText(file);
