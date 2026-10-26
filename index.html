@@ -70,8 +70,16 @@ h1.title{font-size:30px;margin:4px 0 6px}
 .stat{background:var(--paper);border:1px solid var(--line);border-top:3px solid var(--c,var(--forest));border-radius:var(--r);padding:14px 16px;transition:background .15s,border-color .15s}
 .stat .num{font-family:'Fraunces',serif;font-size:26px}
 .stat .lbl{color:var(--ink-soft);font-size:12.5px;margin-top:2px}
+.stats .stat:nth-child(1){background:#FCE8E6}
+.stats .stat:nth-child(2){background:#E3F5EA}
+.stats .stat:nth-child(3){background:#E5EEFC}
+.stats .stat:nth-child(4){background:#FBF1D6}
+.stats .stat:nth-child(5){background:#EDE4FB}
+.stats .stat .num{color:#1B2420}
+.stats .stat .lbl{color:#4A544E}
+.stats .stat.active{background:var(--forest)}
 .stat.active{background:var(--forest);border-color:var(--forest)}
-.stat.active .num,.stat.active .lbl{color:#fff}
+.stats .stat.active .num,.stats .stat.active .lbl{color:#fff}
 .panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;margin-bottom:18px}
 .panel h2{font-size:17px;margin-bottom:2px}
 .panel .count{color:var(--ink-soft);font-size:13px;margin-bottom:14px}
@@ -383,14 +391,14 @@ function renderToday(el){
   const quote = QUOTES[new Date().getDate() % QUOTES.length];
   const heroImg = data.backgrounds.length ? data.backgrounds[Math.floor(Date.now()/3600000)%data.backgrounds.length] : null;
   const quickItems = [
-    {v:'tasks', label:'Tasks', icon:'☑', count:data.tasks.filter(x=>!x.done).length, c:'var(--sky)'},
-    {v:'schedule', label:'Schedule', icon:'⏰', count:data.schedule.length, c:'var(--ok)'},
-    {v:'notes', label:'Notes', icon:'▤', count:data.notes.length, c:'var(--gold)'},
-    {v:'projects', label:'Projects', icon:'◧', count:data.projects.filter(p=>p.status==='active').length, c:'var(--plum)'},
-    {v:'surveys', label:'Site Surveys', icon:'📐', count:data.surveys.length, c:'var(--clay)'},
-    {v:'followups', label:'Follow-ups', icon:'↻', count:data.followups.filter(f=>!f.done).length, c:'var(--forest)'},
-    {v:'expenses', label:'Expenses', icon:'▢', count:data.expenses.length, c:'var(--sky)'},
-    {v:'scratch', label:'Scratchpad', icon:'✎', count:null, c:'var(--gold)'},
+    {v:'tasks', label:'Tasks', icon:'☑', count:data.tasks.filter(x=>!x.done).length, c:'linear-gradient(135deg,#4F8DF7,#2F6BE0)'},
+    {v:'schedule', label:'Schedule', icon:'⏰', count:data.schedule.length, c:'linear-gradient(135deg,#5CC98A,#3BAA6C)'},
+    {v:'notes', label:'Notes', icon:'▤', count:data.notes.length, c:'linear-gradient(135deg,#F5CE5C,#E9B52E)'},
+    {v:'projects', label:'Projects', icon:'◧', count:data.projects.filter(p=>p.status==='active').length, c:'linear-gradient(135deg,#9A6CF0,#7A4FD8)'},
+    {v:'surveys', label:'Site Surveys', icon:'📐', count:data.surveys.length, c:'linear-gradient(135deg,#F2917F,#E2705C)'},
+    {v:'followups', label:'Follow-ups', icon:'↻', count:data.followups.filter(f=>!f.done).length, c:'linear-gradient(135deg,#5FD0C4,#3AB1A5)'},
+    {v:'expenses', label:'Expenses', icon:'▢', count:data.expenses.length, c:'#DDE1EC', dark:true},
+    {v:'scratch', label:'Scratchpad', icon:'✎', count:null, c:'#F9DCE4', dark:true},
   ];
   el.innerHTML = `
     <div class="hero" style="${heroImg?`background-image:url(${heroImg})`:''}">
@@ -405,7 +413,7 @@ function renderToday(el){
       </div>
       <div class="hero-quote">"${escapeHtml(quote)}"</div>
     </div>
-    <div class="quickgrid">${quickItems.map(q=>`<button class="qcard" data-nav="${q.v}" style="background:${q.c}">
+    <div class="quickgrid">${quickItems.map(q=>`<button class="qcard" data-nav="${q.v}" style="background:${q.c};${q.dark?'color:#2B3140':''}">
         <div class="qicon">${q.icon}</div><div class="qlabel">${q.label}</div>${q.count!==null?`<div class="qcount">${q.count}</div>`:''}
       </button>`).join('')}</div>
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
