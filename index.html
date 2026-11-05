@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Daily Manager">
-<meta name="theme-color" content="#5B6CEB">
+<meta name="theme-color" content="#3B4A7D">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -19,7 +19,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <style>
 :root{
-  --forest:#4361E0; --forest-deep:#3A55D0; --cream:#F5F7FC; --paper:#FFFFFF;
+  --forest:#46569E; --forest-deep:#3B4A7D; --cream:#F5F7FC; --paper:#FFFFFF;
   --ink:#1B2236; --ink-soft:#5E6781; --line:#E3E7F2;
   --gold:#B4863A; --clay:#B4522F; --sky:#3E6E8E; --plum:#7A5C8A;
   --ok:#3E7A54;
@@ -46,16 +46,16 @@ button{font-family:inherit;cursor:pointer}
 input,textarea,select{font-family:inherit;font-size:14px}
 .app{display:flex;min-height:100%}
 /* Sidebar */
-.side{width:230px;flex:none;background:linear-gradient(170deg,#4F8DF7 0%,#5B6CEB 45%,#7A4FD8 100%);color:#fff;display:flex;flex-direction:column;padding:20px 14px;padding-top:calc(20px + env(safe-area-inset-top,0px))}
+.side{width:230px;flex:none;background:#3B4A7D;color:#fff;display:flex;flex-direction:column;padding:20px 14px;padding-top:calc(20px + env(safe-area-inset-top,0px))}
 .brand{display:flex;gap:10px;align-items:center;padding:4px 8px 22px}
-.brand .mark{width:34px;height:34px;border-radius:8px;background:linear-gradient(160deg,var(--gold),#8B6524);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-weight:600;color:#1B140A}
+.brand .mark{width:34px;height:34px;border-radius:8px;background:#B08A47;display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-weight:600;color:#1B140A}
 .brand div b{display:block;font-size:14.5px}
 .brand div span{font-size:11.5px;color:rgba(255,255,255,.8)}
 nav{display:flex;flex-direction:column;gap:2px;flex:1}
-nav button{display:flex;align-items:center;gap:10px;background:none;border:none;color:rgba(255,255,255,.88);text-align:left;padding:9px 10px;border-radius:8px;font-size:13.8px}
+nav button{display:flex;align-items:center;gap:10px;background:none;border:none;color:rgba(255,255,255,.82);text-align:left;padding:9px 10px;border-radius:8px;font-size:13.8px}
 nav button .n{margin-left:auto;background:var(--clay);color:#fff;font-size:11px;padding:1px 6px;border-radius:20px}
-nav button.active{background:rgba(255,255,255,.22);color:#fff;font-weight:600}
-nav button:hover{background:rgba(255,255,255,.14)}
+nav button.active{background:rgba(255,255,255,.14);color:#fff;font-weight:600}
+nav button:hover{background:rgba(255,255,255,.08)}
 .side-foot{font-size:12px;color:rgba(255,255,255,.75);padding:10px 8px 0;border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:12px}
 /* Main */
 main{flex:1;min-width:0;padding:26px 30px 60px;max-width:1160px}
@@ -97,7 +97,7 @@ h1.title{font-size:30px;margin:4px 0 6px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .card{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--c,var(--gold));border-radius:8px;padding:14px}
 .card b{font-size:13.8px}
-.hero{position:relative;border-radius:16px;overflow:hidden;min-height:200px;margin-bottom:22px;background:linear-gradient(135deg,var(--forest),var(--forest-deep));display:flex;flex-direction:column;justify-content:space-between;padding:22px 24px;color:#fff;background-size:cover;background-position:center}
+.hero{position:relative;border-radius:16px;overflow:hidden;min-height:200px;margin-bottom:22px;background:#3B4A7D;display:flex;flex-direction:column;justify-content:space-between;padding:22px 24px;color:#fff;background-size:cover;background-position:center}
 .hero::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,42,33,.35),rgba(12,42,33,.78));z-index:0}
 .hero>*{position:relative;z-index:1}
 .hero-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
@@ -168,7 +168,7 @@ main.has-bg>*{position:relative;z-index:1}
   .tabbar button{flex:1;background:none;border:none;color:var(--ink-soft);font-family:inherit;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;position:relative;cursor:pointer}
   .tabbar button .ti{font-size:21px;line-height:1}
   .tabbar button.on{color:var(--forest);font-weight:700}
-  .tabbar button.plus .ti{width:54px;height:54px;border-radius:50%;background:var(--forest);color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;margin-top:-26px;box-shadow:0 4px 12px rgba(67,97,224,.35)}
+  .tabbar button.plus .ti{width:54px;height:54px;border-radius:50%;background:var(--forest);color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;margin-top:-26px;box-shadow:0 4px 12px rgba(70,86,158,.3)}
   .tabbar .badge{position:absolute;top:0;right:calc(50% - 20px);background:var(--clay);color:#fff;border-radius:10px;font-size:10px;min-width:16px;height:16px;line-height:16px;text-align:center;padding:0 4px;font-weight:700}
   .brand{padding:0 10px 0 0}
   nav button .n{display:none}
@@ -391,14 +391,14 @@ function renderToday(el){
   const quote = QUOTES[new Date().getDate() % QUOTES.length];
   const heroImg = data.backgrounds.length ? data.backgrounds[Math.floor(Date.now()/3600000)%data.backgrounds.length] : null;
   const quickItems = [
-    {v:'tasks', label:'Tasks', icon:'☑', count:data.tasks.filter(x=>!x.done).length, c:'linear-gradient(135deg,#4F8DF7,#2F6BE0)'},
-    {v:'schedule', label:'Schedule', icon:'⏰', count:data.schedule.length, c:'linear-gradient(135deg,#5CC98A,#3BAA6C)'},
-    {v:'notes', label:'Notes', icon:'▤', count:data.notes.length, c:'linear-gradient(135deg,#F5CE5C,#E9B52E)'},
-    {v:'projects', label:'Projects', icon:'◧', count:data.projects.filter(p=>p.status==='active').length, c:'linear-gradient(135deg,#9A6CF0,#7A4FD8)'},
-    {v:'surveys', label:'Site Surveys', icon:'📐', count:data.surveys.length, c:'linear-gradient(135deg,#F2917F,#E2705C)'},
-    {v:'followups', label:'Follow-ups', icon:'↻', count:data.followups.filter(f=>!f.done).length, c:'linear-gradient(135deg,#5FD0C4,#3AB1A5)'},
-    {v:'expenses', label:'Expenses', icon:'▢', count:data.expenses.length, c:'#DDE1EC', dark:true},
-    {v:'scratch', label:'Scratchpad', icon:'✎', count:null, c:'#F9DCE4', dark:true},
+    {v:'tasks', label:'Tasks', icon:'☑', count:data.tasks.filter(x=>!x.done).length, c:'#5A82D6'},
+    {v:'schedule', label:'Schedule', icon:'⏰', count:data.schedule.length, c:'#5BB085'},
+    {v:'notes', label:'Notes', icon:'▤', count:data.notes.length, c:'#E3B955'},
+    {v:'projects', label:'Projects', icon:'◧', count:data.projects.filter(p=>p.status==='active').length, c:'#8E71D6'},
+    {v:'surveys', label:'Site Surveys', icon:'📐', count:data.surveys.length, c:'#E0806F'},
+    {v:'followups', label:'Follow-ups', icon:'↻', count:data.followups.filter(f=>!f.done).length, c:'#58BDB0'},
+    {v:'expenses', label:'Expenses', icon:'▢', count:data.expenses.length, c:'#DFE3EC', dark:true},
+    {v:'scratch', label:'Scratchpad', icon:'✎', count:null, c:'#F4DDE3', dark:true},
   ];
   el.innerHTML = `
     <div class="hero" style="${heroImg?`background-image:url(${heroImg})`:''}">
