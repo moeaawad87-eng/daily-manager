@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Daily Manager">
-<meta name="theme-color" content="#123B2E">
+<meta name="theme-color" content="#5B6CEB">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -19,8 +19,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <style>
 :root{
-  --forest:#123B2E; --forest-deep:#0C2A21; --cream:#FAF8F3; --paper:#FFFFFF;
-  --ink:#1B2420; --ink-soft:#5B6660; --line:#E4E1D8;
+  --forest:#4361E0; --forest-deep:#3A55D0; --cream:#F5F7FC; --paper:#FFFFFF;
+  --ink:#1B2236; --ink-soft:#5E6781; --line:#E3E7F2;
   --gold:#B4863A; --clay:#B4522F; --sky:#3E6E8E; --plum:#7A5C8A;
   --ok:#3E7A54;
   --r: 10px;
@@ -29,13 +29,13 @@
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --forest:#0F2E24; --forest-deep:#0A211A; --cream:#15181A; --paper:#1D2123;
-    --ink:#EDECE8; --ink-soft:#A3ADA6; --line:#2C3134;
+    --forest:#5C7BF0; --forest-deep:#2A2F6B; --cream:#14161F; --paper:#1D2030;
+    --ink:#ECEEF6; --ink-soft:#A3AAC2; --line:#2B3045;
   }
 }
 :root[data-theme="dark"]{
-  --forest:#0F2E24; --forest-deep:#0A211A; --cream:#15181A; --paper:#1D2123;
-  --ink:#EDECE8; --ink-soft:#A3ADA6; --line:#2C3134;
+  --forest:#5C7BF0; --forest-deep:#2A2F6B; --cream:#14161F; --paper:#1D2030;
+  --ink:#ECEEF6; --ink-soft:#A3AAC2; --line:#2B3045;
 }
 *{box-sizing:border-box}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
@@ -46,17 +46,17 @@ button{font-family:inherit;cursor:pointer}
 input,textarea,select{font-family:inherit;font-size:14px}
 .app{display:flex;min-height:100%}
 /* Sidebar */
-.side{width:230px;flex:none;background:var(--forest-deep);color:#EDEEE9;display:flex;flex-direction:column;padding:20px 14px;padding-top:calc(20px + env(safe-area-inset-top,0px))}
+.side{width:230px;flex:none;background:linear-gradient(170deg,#4F8DF7 0%,#5B6CEB 45%,#7A4FD8 100%);color:#fff;display:flex;flex-direction:column;padding:20px 14px;padding-top:calc(20px + env(safe-area-inset-top,0px))}
 .brand{display:flex;gap:10px;align-items:center;padding:4px 8px 22px}
 .brand .mark{width:34px;height:34px;border-radius:8px;background:linear-gradient(160deg,var(--gold),#8B6524);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-weight:600;color:#1B140A}
 .brand div b{display:block;font-size:14.5px}
-.brand div span{font-size:11.5px;color:#B9C4BC}
+.brand div span{font-size:11.5px;color:rgba(255,255,255,.8)}
 nav{display:flex;flex-direction:column;gap:2px;flex:1}
-nav button{display:flex;align-items:center;gap:10px;background:none;border:none;color:#CFD8D2;text-align:left;padding:9px 10px;border-radius:8px;font-size:13.8px}
+nav button{display:flex;align-items:center;gap:10px;background:none;border:none;color:rgba(255,255,255,.88);text-align:left;padding:9px 10px;border-radius:8px;font-size:13.8px}
 nav button .n{margin-left:auto;background:var(--clay);color:#fff;font-size:11px;padding:1px 6px;border-radius:20px}
-nav button.active{background:rgba(255,255,255,.08);color:#fff}
-nav button:hover{background:rgba(255,255,255,.06)}
-.side-foot{font-size:12px;color:#93A099;padding:10px 8px 0;border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:12px}
+nav button.active{background:rgba(255,255,255,.22);color:#fff;font-weight:600}
+nav button:hover{background:rgba(255,255,255,.14)}
+.side-foot{font-size:12px;color:rgba(255,255,255,.75);padding:10px 8px 0;border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:12px}
 /* Main */
 main{flex:1;min-width:0;padding:26px 30px 60px;max-width:1160px}
 .topbar{display:flex;gap:14px;align-items:center;margin-bottom:26px}
@@ -77,8 +77,8 @@ h1.title{font-size:30px;margin:4px 0 6px}
 .stats .stat:nth-child(5){background:#EDE4FB}
 .stats .stat .num{color:#1B2420}
 .stats .stat .lbl{color:#4A544E}
-.stats .stat.active{background:var(--forest)}
-.stat.active{background:var(--forest);border-color:var(--forest)}
+.stats .stat.active{background:#3BAA6C}
+.stat.active{background:#3BAA6C;border-color:#3BAA6C}
 .stats .stat.active .num,.stats .stat.active .lbl{color:#fff}
 .panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;margin-bottom:18px}
 .panel h2{font-size:17px;margin-bottom:2px}
@@ -168,7 +168,7 @@ main.has-bg>*{position:relative;z-index:1}
   .tabbar button{flex:1;background:none;border:none;color:var(--ink-soft);font-family:inherit;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;position:relative;cursor:pointer}
   .tabbar button .ti{font-size:21px;line-height:1}
   .tabbar button.on{color:var(--forest);font-weight:700}
-  .tabbar button.plus .ti{width:54px;height:54px;border-radius:50%;background:var(--forest);color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;margin-top:-26px;box-shadow:0 4px 12px rgba(18,59,46,.35)}
+  .tabbar button.plus .ti{width:54px;height:54px;border-radius:50%;background:var(--forest);color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;margin-top:-26px;box-shadow:0 4px 12px rgba(67,97,224,.35)}
   .tabbar .badge{position:absolute;top:0;right:calc(50% - 20px);background:var(--clay);color:#fff;border-radius:10px;font-size:10px;min-width:16px;height:16px;line-height:16px;text-align:center;padding:0 4px;font-weight:700}
   .brand{padding:0 10px 0 0}
   nav button .n{display:none}
