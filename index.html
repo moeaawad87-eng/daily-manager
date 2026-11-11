@@ -416,6 +416,7 @@ function renderToday(el){
     <div class="quickgrid">${quickItems.map(q=>`<button class="qcard" data-nav="${q.v}" style="background:${q.c};${q.dark?'color:#2B3140':''}">
         <div class="qicon">${q.icon}</div><div class="qlabel">${q.label}</div>${q.count!==null?`<div class="qcount">${q.count}</div>`:''}
       </button>`).join('')}</div>
+    ${aiPanelHtml()}
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
       <div><div class="eyebrow">TODAY'S FOCUS</div>
       <h1 class="title" style="font-size:22px">Let's make today clear and productive</h1></div>
@@ -468,6 +469,8 @@ function renderToday(el){
     else if(which==='followups'){ selectedStat=which; navigateTo('followups'); }
     else if(which==='expenses'){ selectedStat=which; navigateTo('expenses'); }
   });
+  bindAi(el);
+  el.querySelectorAll('#aiPanel [data-nav]').forEach(b=>b.onclick=()=>navigateTo(b.dataset.nav));
 }
 
 function rowHtml(x){
@@ -615,10 +618,21 @@ function parseProjectUpdate(text, p){
   return changes;
 }
 function projStatusLabel(s){ return s==='done'?'Done':s==='hold'?'On hold':'Active'; }
+async function gfetch(url,opts){
+  const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),20000);
+  try{
+    const r=await fetch(url,Object.assign({signal:ctl.signal},opts||{}));
+    if(!r.ok){ let msg=''; try{ msg=((await r.json()).error||{}).message||''; }catch(e){} throw new Error('Google replied '+r.status+(msg?': '+msg.slice(0,140):'')); }
+    return r;
+  }catch(e){
+    if(e.name==='AbortError') throw new Error('no answer from Google after 20 seconds (check internet / try again)');
+    if(e instanceof TypeError) throw new Error('could not reach Google ('+e.message+')');
+    throw e;
+  }finally{ clearTimeout(t); }
+}
 async function geminiPickModel(key){
   let m=store.get('geminiModel',''); if(m) return m;
-  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200',{headers:{'x-goog-api-key':key}});
-  if(!r.ok) throw new Error('key rejected ('+r.status+')');
+  const r=await gfetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key='+encodeURIComponent(key));
   const list=((await r.json()).models||[]).filter(x=>(x.supportedGenerationMethods||[]).includes('generateContent')).map(x=>x.name.replace('models/',''));
   const ok=list.filter(n=>/^gemini-/.test(n)&&/flash/.test(n)&&!/(image|tts|live|audio|thinking|exp|vision|embedding)/.test(n));
   m = ok.find(n=>n==='gemini-flash-latest') || ok.filter(n=>!/lite/.test(n)).sort().reverse()[0] || ok.sort().reverse()[0];
@@ -640,12 +654,12 @@ Return ONLY JSON: {"progress": integer 0-100 or null, "status": "active"|"done"|
 Rules: progress ONLY if the text states it or gives quantities that clearly imply it (for example "delivered 30 of 60 pots" means 50); never guess, otherwise null. status "done" only if the work is clearly finished, "hold" only if clearly paused or blocked, otherwise null. next = the next action mentioned (short, same language as the update), otherwise null.`;
   for(let attempt=0;attempt<2;attempt++){
     const model=await geminiPickModel(key);
-    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1,responseMimeType:'application/json'}})});
-    if(r.status===404 && attempt===0){ store.set('geminiModel',''); continue; }
-    if(!r.ok) throw new Error('Google replied '+r.status);
+    try{
+    const r=await gfetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1,responseMimeType:'application/json'}})});
     const j=await r.json(); const t=j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts.map(x=>x.text||'').join('');
     if(!t) throw new Error('empty answer');
     return JSON.parse(t.replace(/^```json|```$/g,'').trim());
+    }catch(e){ if(attempt===0 && /\b404\b/.test(e.message)){ store.set('geminiModel',''); continue; } throw e; }
   }
 }
 function applyAiResult(p,r){
@@ -654,6 +668,80 @@ function applyAiResult(p,r){
   if(['active','done','hold'].includes(r.status) && r.status!==p.status){ p.status=r.status; if(r.status==='done') p.progress=100; ch.push('Status → '+projStatusLabel(r.status)); }
   if(typeof r.next==='string' && r.next.trim()){ p.next=r.next.trim(); ch.push('Next step → '+p.next); }
   return ch;
+}
+async function geminiJSON(prompt){
+  const key=store.get('geminiKey',''); if(!key) throw new Error('no key');
+  for(let attempt=0;attempt<2;attempt++){
+    const model=await geminiPickModel(key);
+    try{
+      const r=await gfetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.2,responseMimeType:'application/json'}})});
+      const j=await r.json(); const t=j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts.map(x=>x.text||'').join('');
+      if(!t) throw new Error('empty answer');
+      return JSON.parse(t.replace(/^```json|```$/g,'').trim());
+    }catch(e){ if(attempt===0 && /\b404\b/.test(e.message)){ store.set('geminiModel',''); continue; } throw e; }
+  }
+}
+let aiState={busy:false,reply:'',proposals:null,error:'',q:''};
+function helperBrief(){
+  const t=todayISO(); const h=new Date().getHours();
+  const od=data.tasks.filter(x=>!x.done&&x.due&&x.due<t).length, td=data.tasks.filter(x=>!x.done&&x.due===t).length, fu=data.followups.filter(x=>!x.done&&x.due&&x.due<=t).length;
+  const hi=data.tasks.find(x=>!x.done&&x.priority==='high'&&x.due&&x.due<=t);
+  if(!od&&!td&&!fu) return 'Nothing urgent right now. Tell me what you need, or ask me anything.';
+  const parts=[]; if(od) parts.push(od+' overdue'); if(td) parts.push(td+' due today'); if(fu) parts.push(fu+' follow-up'+(fu>1?'s':'')+' waiting');
+  return (h<12?'Good morning':h<18?'Good afternoon':'Good evening')+', Mohamad. You have '+parts.join(', ')+'.'+(hi?' Most important: '+escapeHtml(hi.title)+'.':'');
+}
+function aiPanelHtml(){
+  const hasKey=!!store.get('geminiKey','');
+  const pr=aiState.proposals;
+  const n=pr?(pr.tasks.length+pr.followups.length+pr.notes.length):0;
+  return `<div class="panel" id="aiPanel" style="margin-bottom:18px">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><div style="width:34px;height:34px;border-radius:50%;background:var(--forest);color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px">✦</div><div><b style="font-size:14.5px">Your helper</b><div style="font-size:12.5px;color:var(--ink-soft)">${helperBrief()}</div></div></div>
+    ${hasKey?`<form class="inline" id="aiForm"><input type="text" id="aiQ" placeholder="Tell me what you need… e.g. remind me to call Miral tomorrow about the pots" value="${escapeHtml(aiState.q)}" style="flex:1" ${aiState.busy?'disabled':''}><button type="submit" ${aiState.busy?'disabled':''}>${aiState.busy?'Thinking…':'Ask'}</button></form>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${[['✨ Plan my day','Plan my day: list what is overdue and due today first, then what is coming this week, and suggest a sensible order. Keep it short.'],['What is overdue?','What is overdue? List each item and tell me which one to do first.'],['Where are my projects?','Give me a short status of each project: progress, next step, and what needs my attention.'],['What did I forget?','Look at my tasks, follow-ups and projects. What might I be forgetting or what has been quiet for too long?']].map(([l,q])=>`<button class="filebtn aiChip" data-q="${escapeHtml(q)}" style="border-style:solid" ${aiState.busy?'disabled':''}>${l}</button>`).join('')}</div>`
+    :`<div class="count">Turn on AI by pasting your free Gemini key in Settings. <button class="del" data-nav="settings" style="text-decoration:underline">Open Settings</button></div>`}
+    ${aiState.error?`<p style="color:var(--clay);margin-top:10px">${escapeHtml(aiState.error)}</p>`:''}
+    ${aiState.reply?`<div style="margin-top:12px;white-space:pre-wrap;font-size:14px;line-height:1.55">${escapeHtml(aiState.reply)}</div>`:''}
+    ${n?`<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><b style="font-size:13px">I can add:</b>
+      ${pr.tasks.map(t=>`<div style="font-size:13.5px;margin-top:4px">☑ ${escapeHtml(t.title)} <span style="color:var(--ink-soft)">${t.due?fmtDate(t.due):''} ${t.tag||''}${t.project?' · '+escapeHtml(t.project):''}</span></div>`).join('')}
+      ${pr.followups.map(t=>`<div style="font-size:13.5px;margin-top:4px">↻ ${escapeHtml(t.title)} <span style="color:var(--ink-soft)">${t.due?fmtDate(t.due):''}</span></div>`).join('')}
+      ${pr.notes.map(t=>`<div style="font-size:13.5px;margin-top:4px">▤ ${escapeHtml(t.title||t.body)}</div>`).join('')}
+      <div style="margin-top:8px"><button class="addbtn" id="aiAdd" style="margin-right:8px">Add all</button><button class="filebtn" id="aiDismiss" style="border-style:solid">Dismiss</button></div></div>`:''}
+  </div>`;
+}
+async function aiAsk(q){
+  aiState={busy:true,reply:'',proposals:null,error:'',q:''}; renderView();
+  const t=todayISO(); const day=new Date().toLocaleDateString('en-GB',{weekday:'long'});
+  const ctx={
+    tasks:data.tasks.filter(x=>!x.done).slice(0,80).map(x=>({title:x.title,due:x.due||'',tag:x.tag,priority:x.priority||'',project:x.project||''})),
+    followups:data.followups.filter(x=>!x.done).slice(0,40).map(x=>({title:x.title,due:x.due||'',tag:x.tag})),
+    projects:data.projects.map(x=>({name:x.name,status:x.status,progress:projProgress(x),next:x.next||'',age:projAge(x)}))
+  };
+  const prompt=`You are the assistant inside Mohamad's personal work app. He is a Business Development Manager at a landscaping company in Abu Dhabi. Today is ${day} ${t}. He writes in English or Arabic; reply in the language he used.
+His open data (JSON): ${JSON.stringify(ctx)}
+His request: ${q}
+
+Return ONLY JSON: {"reply": string, "tasks":[{"title":string,"due":"YYYY-MM-DD" or "","tag":"work"|"personal","priority":""|"high"|"reminder","project":string}], "followups":[{"title":string,"due":"YYYY-MM-DD" or "","tag":"work"|"personal"}], "notes":[{"title":string,"body":string}]}
+Rules: reply is short, practical plain text (line breaks allowed, no markdown symbols). Only fill tasks, followups or notes when he clearly asks to add, remind or write something down; otherwise return empty arrays. Turn words like "tomorrow" or "Sunday" into a YYYY-MM-DD date relative to today. project must exactly match a project name from his data, or be "". Use only the data above; never invent tasks, numbers or names.`;
+  try{
+    const r=await geminiJSON(prompt);
+    const arr=x=>Array.isArray(x)?x:[];
+    aiState={busy:false,reply:String(r.reply||''),proposals:{tasks:arr(r.tasks).filter(x=>x&&x.title),followups:arr(r.followups).filter(x=>x&&x.title),notes:arr(r.notes).filter(x=>x&&(x.title||x.body))},error:'',q:''};
+  }catch(err){ aiState={busy:false,reply:'',proposals:null,error:'AI problem: '+String(err.message).slice(0,160),q}; }
+  renderView();
+}
+function bindAi(el){
+  const f=el.querySelector('#aiForm'); if(f) f.onsubmit=(e)=>{ e.preventDefault(); const q=el.querySelector('#aiQ').value.trim(); if(q) aiAsk(q); };
+  el.querySelectorAll('.aiChip').forEach(b=>b.onclick=()=>aiAsk(b.dataset.q));
+  const add=el.querySelector('#aiAdd'); if(add) add.onclick=()=>{
+    const pr=aiState.proposals; const base=Date.now(); let i=0;
+    const okDate=d=>/^\d{4}-\d{2}-\d{2}$/.test(d||'')?d:'';
+    pr.tasks.forEach(t=>data.tasks.push({id:base+(i++),title:t.title,tag:t.tag==='personal'?'personal':'work',priority:['high','reminder'].includes(t.priority)?t.priority:'',due:okDate(t.due),recur:'',project:data.projects.some(p=>p.name===t.project)?t.project:'',customer:null,visitTime:'',remindBefore:'',done:false}));
+    pr.followups.forEach(t=>data.followups.push({id:base+(i++),title:t.title,tag:t.tag==='personal'?'personal':'work',priority:'',due:okDate(t.due),done:false}));
+    pr.notes.forEach(t=>data.notes.unshift({id:base+(i++),title:t.title||'',body:t.body||'',photo:''}));
+    if(pr.tasks.length) save('tasks'); if(pr.followups.length) save('followups'); if(pr.notes.length) save('notes');
+    aiState.proposals=null; aiState.reply=(aiState.reply?aiState.reply+'\n\n':'')+'✓ Added.'; renderNav(); renderView();
+  };
+  const dis=el.querySelector('#aiDismiss'); if(dis) dis.onclick=()=>{ aiState.proposals=null; renderView(); };
 }
 function projStart(p){
   if(!p.start){ p.start = (p.created? new Date(p.created) : (p.id>1e12? new Date(p.id) : new Date())).toISOString().slice(0,10); }
@@ -1208,7 +1296,7 @@ function renderSettings(el){
   el.querySelector('#geminiSave').onclick=()=>{ store.set('geminiKey',el.querySelector('#geminiKey').value.trim()); store.set('geminiModel',''); el.querySelector('#geminiMsg').textContent='Saved.'; };
   el.querySelector('#geminiTest').onclick=async()=>{
     const m=el.querySelector('#geminiMsg'); store.set('geminiKey',el.querySelector('#geminiKey').value.trim()); store.set('geminiModel','');
-    m.textContent='Testing…';
+    m.textContent='Testing… (up to 20 seconds)';
     try{ const r=await aiProjectUpdate({name:'Test project',progress:null,status:'active',next:'',updates:[]},'Delivered 30 of 60 pots. Next: plant them tomorrow.'); m.textContent='Works ✓ (read: '+JSON.stringify(r)+')'; }
     catch(err){ m.textContent='Failed: '+err.message; }
   };
