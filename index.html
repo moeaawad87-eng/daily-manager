@@ -237,15 +237,90 @@ const syncErrors = {};
 const SYNC_NAMES = {tasks:'Tasks',notes:'Notes',followups:'Follow-ups',projects:'Projects',expenses:'Expenses',backgrounds:'Background photos',schedule:'Schedule',surveys:'Site surveys',scratch:'Scratchpad'};
 function docSize(k){ try{ return new Blob([JSON.stringify({items:data[k]})]).size; }catch(e){ return 0; } }
 function setSyncError(k,msg){ if(msg) syncErrors[k]=msg; else delete syncErrors[k]; if(current==='settings') renderView(); }
-function pushToCloud(k){
-  const size = docSize(k);
-  if(size > DOC_LIMIT){
-    setSyncError(k, `${SYNC_NAMES[k]||k} is too big to sync (${(size/1e6).toFixed(2)} MB, limit 1 MB). It is saved on this device only. Remove some photos or receipts here to sync again.`);
-    return;
+// ---- Photos: each photo / receipt lives in its own cloud document ("blobs"),
+// and the lists only keep a short "blob:<id>" reference. This keeps every list
+// far below the 1 MB limit, however many photos you add.
+const BLOB_MIN = 20000;           // inline images bigger than this get moved out
+const BLOB_MAX = 1000000;         // one photo/file must fit in one document
+const BLANK_IMG = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+const blobCache = {}, blobLoading = {}, lastRefs = {};
+const blobsCol = () => firebase.firestore().collection('blobs');
+function isBlobRef(v){ return typeof v==='string' && v.startsWith('blob:'); }
+let blobRenderTimer = null;
+function loadBlob(id){
+  if(blobCache[id] || blobLoading[id] || !cloudReady) return blobLoading[id];
+  blobLoading[id] = blobsCol().doc(id).get().then(s=>{
+    const d = s.exists && s.data();
+    if(d && d.data){ blobCache[id]=d.data; clearTimeout(blobRenderTimer); blobRenderTimer=setTimeout(()=>{ renderView(); applyBackground(); },60); }
+  }).catch(()=>{}).finally(()=>{ delete blobLoading[id]; });
+  return blobLoading[id];
+}
+// Use in templates: returns the picture now if we have it, otherwise a blank and loads it.
+function img(v){
+  if(!isBlobRef(v)) return v||'';
+  const id=v.slice(5);
+  if(blobCache[id]) return blobCache[id];
+  loadBlob(id); return BLANK_IMG;
+}
+async function resolveBlob(v){
+  if(!isBlobRef(v)) return v||'';
+  const id=v.slice(5);
+  if(!blobCache[id]) await loadBlob(id);
+  return blobCache[id]||'';
+}
+async function inlineCopy(v){ // full copy with real pictures, for backups
+  if(isBlobRef(v)) return await resolveBlob(v);
+  if(Array.isArray(v)) return Promise.all(v.map(inlineCopy));
+  if(v && typeof v==='object'){ const o={}; for(const key in v) o[key]=await inlineCopy(v[key]); return o; }
+  return v;
+}
+function collectRefs(v, out=new Set()){
+  if(isBlobRef(v)) out.add(v.slice(5));
+  else if(Array.isArray(v)) v.forEach(x=>collectRefs(x,out));
+  else if(v && typeof v==='object') for(const key in v) collectRefs(v[key],out);
+  return out;
+}
+async function externalizeImages(k){
+  const found=[];
+  const walk=(o)=>{ for(const key of Object.keys(o)){ const v=o[key];
+    if(typeof v==='string'){ if(v.startsWith('data:') && v.length>BLOB_MIN) found.push([o,key,v]); }
+    else if(v && typeof v==='object') walk(v); } };
+  if(data[k] && typeof data[k]==='object') walk(data[k]);
+  let changed=false, tooBig=0;
+  for(const [obj,key,v] of found){
+    if(v.length > BLOB_MAX){ tooBig++; continue; }
+    const id = Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+    try{
+      await blobsCol().doc(id).set({data:v, created:Date.now()});
+      blobCache[id]=v;
+      if(obj[key]===v){ obj[key]='blob:'+id; changed=true; }
+    }catch(e){ setSyncError('photo_'+k, `A photo in ${SYNC_NAMES[k]||k} did not upload: ${String(e&&e.message||e).slice(0,120)}`); return; }
   }
-  fsdocs[k].set({items:data[k]})
-    .then(()=>setSyncError(k,''))
-    .catch(err=>setSyncError(k, `${SYNC_NAMES[k]||k} did not sync: ${String(err&&err.message||err).slice(0,140)}`));
+  setSyncError('photo_'+k, tooBig ? `${tooBig} file${tooBig>1?'s':''} in ${SYNC_NAMES[k]||k} ${tooBig>1?'are':'is'} bigger than 1 MB, so ${tooBig>1?'they stay':'it stays'} on this device only. Use a smaller file or a photo instead.` : '');
+  if(changed) store.set(k, data[k]);
+}
+// Drop the cloud copy of photos that were removed from a list.
+function cleanupBlobs(k){
+  const now = collectRefs(data[k]);
+  (lastRefs[k]||new Set()).forEach(id=>{ if(!now.has(id)){ blobsCol().doc(id).delete().catch(()=>{}); delete blobCache[id]; } });
+  lastRefs[k] = now;
+}
+const pushing = {}, pushAgain = {};
+async function pushToCloud(k){
+  if(pushing[k]){ pushAgain[k]=true; return; }
+  pushing[k]=true;
+  try{
+    await externalizeImages(k);
+    const size = docSize(k);
+    if(size > DOC_LIMIT){
+      setSyncError(k, `${SYNC_NAMES[k]||k} is too big to sync (${(size/1e6).toFixed(2)} MB, limit 1 MB). It is saved on this device only. Remove some large files here to sync again.`);
+      return;
+    }
+    await fsdocs[k].set({items:data[k]});
+    setSyncError(k,'');
+    cleanupBlobs(k);
+  }catch(err){ setSyncError(k, `${SYNC_NAMES[k]||k} did not sync: ${String(err&&err.message||err).slice(0,140)}`); }
+  finally{ pushing[k]=false; if(pushAgain[k]){ pushAgain[k]=false; pushToCloud(k); } }
 }
 function queueCloudSync(k){
   if(applyingRemote[k] || !cloudReady) return; // never write before we have loaded the cloud copy
@@ -281,14 +356,17 @@ async function initCloud(){
       }
     }
     cloudReady = true; syncStatus='connected';
+    SYNC_KEYS.forEach(k=>{ lastRefs[k]=collectRefs(data[k]); });
     renderNav(); renderView(); applyBackground();
+    // Move photos still stored inside the lists (older data) out to their own documents.
+    SYNC_KEYS.forEach(k=>{ if(JSON.stringify(data[k]).includes('"data:')) pushToCloud(k); });
     SYNC_KEYS.forEach(k=>{
       cloudListeners.push(fsdocs[k].onSnapshot(snap=>{
         if(!snap.exists || snap.metadata.hasPendingWrites) return;
         const remote = snap.data();
         if(!remote || !Array.isArray(remote.items)) return;
         if(JSON.stringify(remote.items)!==JSON.stringify(data[k])){
-          data[k]=remote.items; store.set(k,remote.items);
+          data[k]=remote.items; store.set(k,remote.items); lastRefs[k]=collectRefs(remote.items);
           applyingRemote[k]=true; renderNav(); renderView(); applyBackground(); applyingRemote[k]=false;
         }
       }, err=>setSyncError(k, `${SYNC_NAMES[k]||k} stopped syncing: ${String(err&&err.message||err).slice(0,140)}`)));
@@ -343,7 +421,7 @@ function renderNav(){
 function applyBackground(){
   const main = document.querySelector('main');
   if(data.backgrounds.length){
-    const pick = data.backgrounds[Math.floor(Date.now()/3600000)%data.backgrounds.length];
+    const pick = img(data.backgrounds[Math.floor(Date.now()/3600000)%data.backgrounds.length]);
     main.classList.add('has-bg');
     main.style.setProperty('--bgimg', `url(${pick})`);
     main.style.setProperty('background', 'none');
@@ -416,7 +494,7 @@ function renderToday(el){
   const hr = new Date().getHours();
   const greeting = hr<12?'Good morning':hr<17?'Good afternoon':'Good evening';
   const quote = QUOTES[new Date().getDate() % QUOTES.length];
-  const heroImg = data.backgrounds.length ? data.backgrounds[Math.floor(Date.now()/3600000)%data.backgrounds.length] : null;
+  const heroImg = data.backgrounds.length ? img(data.backgrounds[Math.floor(Date.now()/3600000)%data.backgrounds.length]) : null;
   const quickItems = [
     {v:'tasks', label:'Tasks', icon:'☑', count:data.tasks.filter(x=>!x.done).length, c:'#5A82D6'},
     {v:'schedule', label:'Schedule', icon:'⏰', count:data.schedule.length, c:'#5BB085'},
@@ -871,7 +949,7 @@ function renderNotes(el){
         <label class="filebtn" style="cursor:pointer">📷 Attach photo<input type="file" name="photo" accept="image/*" style="display:none"></label>
         <button type="submit" style="align-self:flex-start">Add note</button>
       </form>
-      <div class="grid2">${data.notes.length? data.notes.map(n=>`<div class="card" data-search="${escapeHtml(n.title+' '+n.body)}">${n.photo?`<img class="notephoto" src="${n.photo}">`:''}<b>${escapeHtml(n.title)}</b><p>${escapeHtml(n.body)}</p><p style="margin-top:8px"><button class="del" data-edit="${n.id}">edit</button> <button class="del" data-del="${n.id}">remove</button></p></div>`).join('') : '<div class="empty">No notes yet — jot one down above.</div>'}</div>
+      <div class="grid2">${data.notes.length? data.notes.map(n=>`<div class="card" data-search="${escapeHtml(n.title+' '+n.body)}">${n.photo?`<img class="notephoto" src="${img(n.photo)}">`:''}<b>${escapeHtml(n.title)}</b><p>${escapeHtml(n.body)}</p><p style="margin-top:8px"><button class="del" data-edit="${n.id}">edit</button> <button class="del" data-del="${n.id}">remove</button></p></div>`).join('') : '<div class="empty">No notes yet — jot one down above.</div>'}</div>
     </div>`;
   el.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{
     const n=data.notes.find(i=>i.id==b.dataset.edit);
@@ -971,7 +1049,7 @@ function renderExpenses(el){
         <button type="submit" style="background:var(--forest);color:#fff;border:none;border-radius:7px;padding:8px 16px;font-weight:600">Add</button>
       </form>
       ${list.length? list.map(x=>`<div class="row"><div style="display:flex;gap:12px;align-items:center;flex:1">
-        ${x.receipt?(x.receipt.type==='application/pdf'?`<button class="del" data-viewreceipt="${x.id}" style="width:48px;height:48px;flex:none;border:1px solid var(--line);border-radius:6px;background:var(--cream)">📄</button>`:`<img src="${x.receipt.dataUrl}" data-viewreceipt="${x.id}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex:none;cursor:pointer">`):''}
+        ${x.receipt?(x.receipt.type==='application/pdf'?`<button class="del" data-viewreceipt="${x.id}" style="width:48px;height:48px;flex:none;border:1px solid var(--line);border-radius:6px;background:var(--cream)">📄${img(x.receipt.dataUrl)?'':''}</button>`:`<img src="${img(x.receipt.dataUrl)}" data-viewreceipt="${x.id}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex:none;cursor:pointer">`):''}
         <div class="txt"><b>${escapeHtml(x.label)}</b></div></div>
         <div class="meta">AED ${x.amount} <button class="del" data-del="${x.id}">remove</button></div></div>`).join('') : '<div class="empty">No receipts logged yet.</div>'}
     </div>`;
@@ -995,7 +1073,7 @@ function renderExpenses(el){
   rf.onchange=()=>attachFile(rf.files[0]);
   el.querySelectorAll('[data-viewreceipt]').forEach(b=>b.onclick=()=>{
     const x = data.expenses.find(e=>e.id==b.dataset.viewreceipt);
-    if(x && x.receipt) viewReceipt(x.receipt.dataUrl);
+    if(x && x.receipt){ const ready=img(x.receipt.dataUrl); if(ready!==BLANK_IMG) viewReceipt(ready); else resolveBlob(x.receipt.dataUrl).then(u=>{ if(u) viewReceipt(u); else alert('This receipt is still loading. Try again in a moment.'); }); }
   });
   el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
     if(!confirm('Remove this expense? This cannot be undone.')) return;
@@ -1199,7 +1277,7 @@ function renderSurveyDetail(el){
       ${(s.sections||[]).map(sec=>`<div class="panel" data-sec="${sec.id}" style="background:var(--cream)">
         <div style="display:flex;justify-content:space-between;align-items:flex-start"><div><b>${escapeHtml(sec.name)}</b>${sec.measurements?` <span style="color:var(--ink-soft);font-size:12.8px">— ${escapeHtml(sec.measurements)}</span>`:''}</div><button class="del" data-delsec="${sec.id}">remove area</button></div>
         ${(sec.photos||[]).map(p=>`<div class="photoitem" style="display:flex;gap:12px;border-top:1px solid var(--line);padding:12px 0">
-          <img src="${p.image}" style="width:140px;height:100px;object-fit:cover;border-radius:6px;flex:none">
+          <img src="${img(p.image)}" style="width:140px;height:100px;object-fit:cover;border-radius:6px;flex:none">
           <div style="flex:1"><p style="margin:0;font-size:13px;white-space:pre-wrap">${escapeHtml(p.explanation||'')}</p></div>
           <button class="del" data-delphoto="${sec.id}:${p.id}" style="align-self:flex-start">remove</button>
         </div>`).join('')}
@@ -1278,7 +1356,7 @@ function renderSettings(el){
       <h2>Background photos</h2>
       <div class="count">A faint photo rotates behind your pages, changing each hour</div>
       <label class="filebtn" style="cursor:pointer">📷 Add photo<input type="file" id="bgFile" accept="image/*" style="display:none"></label>
-      <div class="bggrid">${data.backgrounds.map((b,i)=>`<div class="bgthumb"><img src="${b}"><button data-bgdel="${i}">remove</button></div>`).join('')}</div>
+      <div class="bggrid">${data.backgrounds.map((b,i)=>`<div class="bgthumb"><img src="${img(b)}"><button data-bgdel="${i}">remove</button></div>`).join('')}</div>
       ${!data.backgrounds.length?'<div class="empty">No photos yet.</div>':''}
     </div>
     <div class="panel">
@@ -1334,8 +1412,10 @@ function renderSettings(el){
   };
   const sob = el.querySelector('#signOutBtn');
   if(sob) sob.onclick=()=>{ if(confirm('Sign out on this device? Your data stays in the cloud.')) firebase.auth().signOut(); };
-  el.querySelector('#exportBtn').onclick=()=>{
-    const payload = JSON.stringify(data, null, 2);
+  el.querySelector('#exportBtn').onclick=async()=>{
+    const btn=el.querySelector('#exportBtn'); const label=btn.textContent; btn.textContent='Preparing backup…'; btn.disabled=true;
+    let full; try{ full = await inlineCopy(data); } finally { btn.textContent=label; btn.disabled=false; }
+    const payload = JSON.stringify(full, null, 2);
     const a=document.createElement('a'); a.href='data:application/json,'+encodeURIComponent(payload); a.download='daily-manager-backup.json'; a.click();
   };
   el.querySelector('#geminiSave').onclick=()=>{ store.set('geminiKey',el.querySelector('#geminiKey').value.trim()); store.set('geminiModel',''); el.querySelector('#geminiMsg').textContent='Saved.'; };
