@@ -615,50 +615,136 @@ function parseProjectUpdate(text, p){
   return changes;
 }
 function projStatusLabel(s){ return s==='done'?'Done':s==='hold'?'On hold':'Active'; }
+async function geminiPickModel(key){
+  let m=store.get('geminiModel',''); if(m) return m;
+  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200',{headers:{'x-goog-api-key':key}});
+  if(!r.ok) throw new Error('key rejected ('+r.status+')');
+  const list=((await r.json()).models||[]).filter(x=>(x.supportedGenerationMethods||[]).includes('generateContent')).map(x=>x.name.replace('models/',''));
+  const ok=list.filter(n=>/^gemini-/.test(n)&&/flash/.test(n)&&!/(image|tts|live|audio|thinking|exp|vision|embedding)/.test(n));
+  m = ok.find(n=>n==='gemini-flash-latest') || ok.filter(n=>!/lite/.test(n)).sort().reverse()[0] || ok.sort().reverse()[0];
+  if(!m) throw new Error('no usable model found');
+  store.set('geminiModel',m); return m;
+}
+async function aiProjectUpdate(p,text,keyArg){
+  const key=keyArg||store.get('geminiKey',''); if(!key) throw new Error('no key');
+  const prev=(p.updates||[]).slice(-6).map(u=>'- '+u.text).join('\n')||'(none)';
+  const prompt=`You maintain a project tracker for a landscaping company in Abu Dhabi. The user writes project updates in English or Arabic.
+Project: ${p.name}
+Current progress: ${p.progress!=null?p.progress+'%':'not set'}; status: ${p.status||'active'}; next step: ${p.next||'not set'}
+Earlier updates:
+${prev}
+Latest update:
+${text}
+
+Return ONLY JSON: {"progress": integer 0-100 or null, "status": "active"|"done"|"hold"|null, "next": string or null}
+Rules: progress ONLY if the text states it or gives quantities that clearly imply it (for example "delivered 30 of 60 pots" means 50); never guess, otherwise null. status "done" only if the work is clearly finished, "hold" only if clearly paused or blocked, otherwise null. next = the next action mentioned (short, same language as the update), otherwise null.`;
+  for(let attempt=0;attempt<2;attempt++){
+    const model=await geminiPickModel(key);
+    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1,responseMimeType:'application/json'}})});
+    if(r.status===404 && attempt===0){ store.set('geminiModel',''); continue; }
+    if(!r.ok) throw new Error('Google replied '+r.status);
+    const j=await r.json(); const t=j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts.map(x=>x.text||'').join('');
+    if(!t) throw new Error('empty answer');
+    return JSON.parse(t.replace(/^```json|```$/g,'').trim());
+  }
+}
+function applyAiResult(p,r){
+  const ch=[];
+  if(typeof r.progress==='number' && r.progress>=0 && r.progress<=100){ p.progress=Math.round(r.progress); ch.push('Progress → '+p.progress+'%'); }
+  if(['active','done','hold'].includes(r.status) && r.status!==p.status){ p.status=r.status; if(r.status==='done') p.progress=100; ch.push('Status → '+projStatusLabel(r.status)); }
+  if(typeof r.next==='string' && r.next.trim()){ p.next=r.next.trim(); ch.push('Next step → '+p.next); }
+  return ch;
+}
+function projStart(p){
+  if(!p.start){ p.start = (p.created? new Date(p.created) : (p.id>1e12? new Date(p.id) : new Date())).toISOString().slice(0,10); }
+  return p.start;
+}
+function projAge(p){
+  const d=Math.max(0,Math.floor((Date.now()-new Date(projStart(p)+'T00:00:00').getTime())/86400000));
+  if(d===0) return 'Started today';
+  if(d<60) return d+' day'+(d===1?'':'s')+' old';
+  const m=Math.floor(d/30.4); return m+' months old';
+}
+function projProgress(p){
+  if(p.progress!=null) return p.progress;
+  const linked=data.tasks.filter(t=>t.project===p.name); if(!linked.length) return null;
+  return Math.round(linked.filter(t=>t.done).length/linked.length*100);
+}
+function projColor(p){ return p.status==='active'?'var(--ok)':p.status==='hold'?'#E3B955':'var(--ink-soft)'; }
+function bar(pct,color){ return pct==null?'':`<div style="background:var(--line);border-radius:6px;height:7px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color}"></div></div>`; }
 function renderProjects(el){
-  el.innerHTML = `<div class="eyebrow">PROJECTS</div><h1 class="title">Projects</h1><div class="sub">Tap a project to write updates. It updates itself.</div>
+  if(openProjectId){ const pr=data.projects.find(x=>x.id==openProjectId); if(pr) return renderProjectDetail(el,pr); openProjectId=null; }
+  el.innerHTML = `<div class="eyebrow">PROJECTS</div><h1 class="title">Projects</h1><div class="sub">Tap a project to open its page and write updates.</div>
     <div class="panel">
       <form class="inline" id="addForm"><input type="text" name="name" placeholder="New project…" required><button type="submit">Add</button></form>
       <div class="grid2">${data.projects.length? data.projects.map(p=>{
-        const linked = data.tasks.filter(t=>t.project===p.name);
-        const done = linked.filter(t=>t.done).length;
-        const taskPct = linked.length? Math.round(done/linked.length*100) : null;
-        const pct = (p.progress!=null)? p.progress : taskPct;
-        const open = openProjectId===p.id;
-        const ups = (p.updates||[]);
-        const color = p.status==='active'?'var(--ok)':p.status==='hold'?'#E3B955':'var(--ink-soft)';
-        return `<div class="card" style="--c:${color};${open?'grid-column:1/-1':''}"><b data-open="${p.id}" style="cursor:pointer;display:block">${escapeHtml(p.name)} <span style="font-weight:400;font-size:12px;color:var(--ink-soft)">${open?'▲':'▼ updates ('+ups.length+')'}</span></b><p>${projStatusLabel(p.status)} &middot; <button class="del" data-tog="${p.id}">toggle</button> <button class="del" data-del="${p.id}">remove</button></p>
-        ${pct!=null?`<div style="background:var(--line);border-radius:6px;height:6px;margin-top:9px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color}"></div></div><p style="margin-top:5px">${pct}% ${p.progress==null&&linked.length?`(${done}/${linked.length} tasks done)`:''}</p>`:'<p style="margin-top:5px">No progress yet</p>'}
-        ${p.next?`<p style="margin-top:4px"><b style="color:var(--ink)">Next:</b> ${escapeHtml(p.next)}</p>`:''}
-        ${open?`<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
-          <div id="feed-${p.id}" style="max-height:300px;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
-            ${ups.length? ups.map(u=>`<div style="align-self:flex-end;max-width:85%;background:var(--forest);color:#fff;border-radius:12px 12px 2px 12px;padding:8px 12px;font-size:13.5px;white-space:pre-wrap">${escapeHtml(u.text)}<div style="font-size:10.5px;opacity:.75;margin-top:3px">${new Date(u.ts).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}${u.changes&&u.changes.length?' · ✓ '+escapeHtml(u.changes.join(', ')):''} <span data-delup="${p.id}:${u.id}" style="cursor:pointer;margin-left:6px">✕</span></div></div>`).join('') : '<div class="empty" style="padding:8px">No updates yet. Write what happened today.</div>'}
-          </div>
-          <form class="inline" data-upform="${p.id}"><input type="text" name="msg" placeholder="e.g. Pots delivered, 60% done. Next: install irrigation" style="flex:1" required><button type="submit">Send</button></form>
-          <p style="margin-top:6px;font-size:11.5px">Tip: write <b>60%</b> to set progress, <b>done</b>, <b>on hold</b> or <b>resume</b> to change status, and <b>next: …</b> to set the next step.</p>
-        </div>`:''}
-        </div>`;
+        const pct=projProgress(p);
+        return `<div class="card" data-open="${p.id}" style="--c:${projColor(p)};cursor:pointer"><b>${escapeHtml(p.name)}</b>
+        <p>${projStatusLabel(p.status)} &middot; ${projAge(p)}</p>
+        <div style="margin-top:8px">${pct!=null?bar(pct,projColor(p))+`<p style="margin-top:5px">${pct}%</p>`:'<p>No progress yet</p>'}</div>
+        <p style="margin-top:4px"><b style="color:var(--ink)">Next:</b> ${p.next?escapeHtml(p.next):'<span style="opacity:.7">not set</span>'}</p>
+        <p style="margin-top:6px;color:var(--forest);font-weight:600">Open ›</p></div>`;
       }).join('') : '<div class="empty">No projects yet.</div>'}</div>
     </div>`;
-  el.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{ openProjectId = openProjectId==b.dataset.open?null:+b.dataset.open; renderView(); });
-  el.querySelectorAll('[data-upform]').forEach(f=>f.onsubmit=(e)=>{
-    e.preventDefault(); const p=data.projects.find(x=>x.id==f.dataset.upform); const text=new FormData(f).get('msg').trim(); if(!text) return;
-    const changes=parseProjectUpdate(text,p);
-    p.updates=p.updates||[]; p.updates.push({id:Date.now(),text,ts:Date.now(),changes});
+  el.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{ openProjectId=+b.dataset.open; renderView(); window.scrollTo(0,0); });
+  el.querySelector('#addForm').onsubmit=(e)=>{ e.preventDefault(); const f=new FormData(e.target); data.projects.push({id:Date.now(),name:f.get('name'),status:'active',updates:[],start:todayISO()}); save('projects'); e.target.reset(); renderView(); };
+  if(data.projects.some(p=>!p.start)){ data.projects.forEach(projStart); save('projects'); }
+}
+function renderProjectDetail(el,p){
+  const pct=projProgress(p); const ups=p.updates||[]; const det=p.details||{};
+  const linked=data.tasks.filter(t=>t.project===p.name);
+  const field=(k,label,ph)=>`<label style="display:block;font-size:12px;color:var(--ink-soft);margin-top:10px">${label}<input type="text" data-det="${k}" value="${escapeHtml(det[k]||'')}" placeholder="${ph}" style="display:block;width:100%;margin-top:3px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)"></label>`;
+  el.innerHTML = `<button class="del" id="backProjects" style="font-size:13.5px;margin-bottom:6px">← All projects</button>
+    <div class="eyebrow">PROJECT</div><h1 class="title">${escapeHtml(p.name)}</h1>
+    <div class="sub">${projStatusLabel(p.status)} &middot; ${projAge(p)} &middot; started ${fmtDate(projStart(p))}</div>
+    <div class="panel" style="--c:${projColor(p)}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">
+        <div><div style="font-size:12px;color:var(--ink-soft)">PROGRESS</div><div style="font-size:26px;font-family:'Fraunces',serif">${pct!=null?pct+'%':'—'}</div>${bar(pct,projColor(p))}</div>
+        <div><div style="font-size:12px;color:var(--ink-soft)">NEXT STEP</div><div style="font-size:15px;margin-top:6px">${p.next?escapeHtml(p.next):'<span style="opacity:.6">Not set. Write “next: …” in an update.</span>'}</div></div>
+        <div><div style="font-size:12px;color:var(--ink-soft)">AGE</div><div style="font-size:15px;margin-top:6px">${projAge(p)}</div></div>
+        <div><div style="font-size:12px;color:var(--ink-soft)">UPDATES</div><div style="font-size:15px;margin-top:6px">${ups.length}${linked.length?` · ${linked.filter(t=>t.done).length}/${linked.length} tasks done`:''}</div></div>
+      </div>
+      <div style="margin-top:12px"><button class="del" data-tog="${p.id}">${p.status==='done'?'Reopen project':'Mark done'}</button> <button class="del" data-hold="${p.id}">${p.status==='hold'?'Resume':'Put on hold'}</button> <button class="del" data-del="${p.id}">Remove project</button></div>
+    </div>
+    <div class="panel"><h2 style="margin:0 0 4px">Updates</h2>
+      <div id="feed" style="max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:8px;margin:10px 0">
+        ${ups.length? ups.map(u=>`<div style="align-self:flex-end;max-width:85%;background:var(--forest);color:#fff;border-radius:12px 12px 2px 12px;padding:8px 12px;font-size:13.5px;white-space:pre-wrap">${escapeHtml(u.text)}<div style="font-size:10.5px;opacity:.75;margin-top:3px">${new Date(u.ts).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}${u.changes&&u.changes.length?' · ✓ '+escapeHtml(u.changes.join(', ')):''} <span data-delup="${u.id}" style="cursor:pointer;margin-left:6px">✕</span></div></div>`).join('') : '<div class="empty" style="padding:8px">No updates yet. Write what happened today.</div>'}
+      </div>
+      <form id="upform" style="display:flex;flex-direction:column;gap:8px"><textarea name="msg" rows="4" placeholder="Write today's update in your own words…&#10;e.g. Delivered the 60 pots. Tomorrow we plant them. 60%. Next: install irrigation" required style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);font-family:inherit;font-size:14px;resize:vertical"></textarea><button type="submit" class="addbtn" style="align-self:flex-end">Save update</button></form>
+      <p style="margin-top:6px;font-size:11.5px">Write in your own words. With the smart key in Settings the app reads it by itself; without it, it understands <b>60%</b>, <b>done</b>, <b>on hold</b>, <b>resume</b> and <b>next: …</b>. Ctrl+Enter saves.</p>
+    </div>
+    <div class="panel"><h2 style="margin:0">Details</h2>
+      <label style="display:block;font-size:12px;color:var(--ink-soft);margin-top:10px">Start date<input type="date" data-start value="${projStart(p)}" style="display:block;margin-top:3px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)"></label>
+      ${field('client','Client','Client / company')}${field('contact','Contact person & phone','Name, phone')}${field('location','Location','Site / area')}${field('value','Value (AED)','e.g. 85,000')}
+      <label style="display:block;font-size:12px;color:var(--ink-soft);margin-top:10px">Notes<textarea data-det="notes" rows="5" placeholder="Scope, agreements, anything to remember…" style="display:block;width:100%;margin-top:3px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">${escapeHtml(det.notes||'')}</textarea></label>
+    </div>`;
+  const feed=el.querySelector('#feed'); if(feed) feed.scrollTop=feed.scrollHeight;
+  el.querySelector('#backProjects').onclick=()=>{ openProjectId=null; renderView(); };
+  el.querySelector('#upform textarea').onkeydown=(e)=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); e.target.form.requestSubmit(); } };
+  el.querySelector('#upform').onsubmit=async(e)=>{
+    e.preventDefault(); const text=new FormData(e.target).get('msg').trim(); if(!text) return;
+    const u={id:Date.now(),text,ts:Date.now(),changes:[]};
+    const btn=e.target.querySelector('button'); const key=store.get('geminiKey','');
+    if(key){
+      btn.disabled=true; btn.textContent='Reading your update…';
+      try{ u.changes=applyAiResult(p,await aiProjectUpdate(p,text)); u.changes.unshift('🤖'); }
+      catch(err){ u.changes=parseProjectUpdate(text,p); u.changes.push('AI unavailable ('+String(err.message).slice(0,50)+')'); }
+    } else { u.changes=parseProjectUpdate(text,p); }
+    p.updates=p.updates||[]; p.updates.push(u);
     save('projects'); renderView();
-    const feed=document.getElementById('feed-'+p.id); if(feed) feed.scrollTop=feed.scrollHeight;
-  });
+  };
   el.querySelectorAll('[data-delup]').forEach(b=>b.onclick=()=>{
-    const [pid,uid]=b.dataset.delup.split(':'); const p=data.projects.find(x=>x.id==pid);
     if(!confirm('Delete this update?')) return;
-    p.updates=(p.updates||[]).filter(u=>u.id!=uid); save('projects'); renderView();
+    p.updates=(p.updates||[]).filter(u=>u.id!=b.dataset.delup); save('projects'); renderView();
   });
-  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
-    if(!confirm('Remove this project?')) return;
-    data.projects=data.projects.filter(p=>p.id!=b.dataset.del); save('projects'); renderView();
-  });
-  el.querySelectorAll('[data-tog]').forEach(b=>b.onclick=()=>{ const p=data.projects.find(p=>p.id==b.dataset.tog); p.status=p.status==='active'?'done':'active'; if(p.status==='done') p.progress=100; save('projects'); renderView(); });
-  el.querySelector('#addForm').onsubmit=(e)=>{ e.preventDefault(); const f=new FormData(e.target); data.projects.push({id:Date.now(),name:f.get('name'),status:'active',updates:[]}); save('projects'); e.target.reset(); renderView(); };
+  el.querySelectorAll('[data-det]').forEach(i=>i.onchange=()=>{ p.details=p.details||{}; p.details[i.dataset.det]=i.value; save('projects'); });
+  el.querySelector('[data-start]').onchange=(e)=>{ if(e.target.value){ p.start=e.target.value; save('projects'); renderView(); } };
+  el.querySelector('[data-tog]').onclick=()=>{ p.status=p.status==='done'?'active':'done'; if(p.status==='done') p.progress=100; save('projects'); renderView(); };
+  el.querySelector('[data-hold]').onclick=()=>{ p.status=p.status==='hold'?'active':'hold'; save('projects'); renderView(); };
+  el.querySelector('[data-del]').onclick=()=>{
+    if(!confirm('Remove this project and all its updates?')) return;
+    data.projects=data.projects.filter(x=>x.id!==p.id); openProjectId=null; save('projects'); renderView();
+  };
 }
 
 function renderNotes(el){
@@ -1085,6 +1171,12 @@ function renderSettings(el){
       <div class="count">${syncStatus==='connected'?'Connected — changes sync live across every device open on this app.':syncStatus==='checking'?'Connecting…':'Could not reach the cloud database right now — check your internet connection. Your data is still safe locally.'}</div>
     </div>
     <div class="panel">
+      <h2>Smart project updates (free Google Gemini key)</h2>
+      <div class="count">Lets the app read your project updates written in your own words (English or Arabic) and update progress, status and next step by itself. Your update text is sent to Google for this. The key stays on this device only, so paste it on each device you use.</div>
+      <input type="password" id="geminiKey" placeholder="Paste your Gemini API key" value="${escapeHtml(store.get('geminiKey',''))}" style="width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+      <div style="margin-top:8px"><button class="addbtn" id="geminiSave" style="margin-right:8px">Save key</button><button class="filebtn" id="geminiTest" style="border-style:solid">Test it</button> <span id="geminiMsg" style="font-size:12.5px;margin-left:6px"></span></div>
+    </div>
+    <div class="panel">
       <h2>Backup</h2>
       <div class="count">Download everything, then restore that file on your other device — this is how to move data across devices on a personal account</div>
       <button class="addbtn" id="exportBtn" style="margin-right:8px">Download backup (.json)</button>
@@ -1112,6 +1204,13 @@ function renderSettings(el){
   el.querySelector('#exportBtn').onclick=()=>{
     const payload = JSON.stringify(data, null, 2);
     const a=document.createElement('a'); a.href='data:application/json,'+encodeURIComponent(payload); a.download='daily-manager-backup.json'; a.click();
+  };
+  el.querySelector('#geminiSave').onclick=()=>{ store.set('geminiKey',el.querySelector('#geminiKey').value.trim()); store.set('geminiModel',''); el.querySelector('#geminiMsg').textContent='Saved.'; };
+  el.querySelector('#geminiTest').onclick=async()=>{
+    const m=el.querySelector('#geminiMsg'); store.set('geminiKey',el.querySelector('#geminiKey').value.trim()); store.set('geminiModel','');
+    m.textContent='Testing…';
+    try{ const r=await aiProjectUpdate({name:'Test project',progress:null,status:'active',next:'',updates:[]},'Delivered 30 of 60 pots. Next: plant them tomorrow.'); m.textContent='Works ✓ (read: '+JSON.stringify(r)+')'; }
+    catch(err){ m.textContent='Failed: '+err.message; }
   };
   el.querySelector('#icsBtn').onclick=()=>{
     const a=document.createElement('a'); a.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(generateICS()); a.download='daily-manager.ics'; a.click();
