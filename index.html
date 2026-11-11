@@ -602,25 +602,63 @@ function renderList(el,key,title,sub){
   };
 }
 
+let openProjectId = null;
+function parseProjectUpdate(text, p){
+  const changes=[]; const t=text.toLowerCase();
+  const m=t.match(/(\d{1,3})\s*%/);
+  if(m){ const v=Math.min(100,+m[1]); p.progress=v; changes.push('Progress → '+v+'%'); }
+  if(!(m && +m[1]<100) && /\b(done|completed|complete|finished|handed over|handover done|closed)\b/.test(t) && !/\bnot (done|complete|finished)\b/.test(t)){ p.status='done'; p.progress=100; changes.push('Status → Done'); }
+  else if(/\b(on hold|paused|pause|waiting for|stopped)\b/.test(t)){ p.status='hold'; changes.push('Status → On hold'); }
+  else if(/\b(resume|resumed|restart|restarted|reopen|reopened|started|kick.?off)\b/.test(t)){ p.status='active'; changes.push('Status → Active'); }
+  const n=text.match(/next\s*(?:step)?\s*[:\-]\s*(.+)$/i);
+  if(n){ p.next=n[1].trim(); changes.push('Next step → '+p.next); }
+  return changes;
+}
+function projStatusLabel(s){ return s==='done'?'Done':s==='hold'?'On hold':'Active'; }
 function renderProjects(el){
-  el.innerHTML = `<div class="eyebrow">PROJECTS</div><h1 class="title">Projects</h1><div class="sub">What's currently active</div>
+  el.innerHTML = `<div class="eyebrow">PROJECTS</div><h1 class="title">Projects</h1><div class="sub">Tap a project to write updates. It updates itself.</div>
     <div class="panel">
       <form class="inline" id="addForm"><input type="text" name="name" placeholder="New project…" required><button type="submit">Add</button></form>
       <div class="grid2">${data.projects.length? data.projects.map(p=>{
         const linked = data.tasks.filter(t=>t.project===p.name);
         const done = linked.filter(t=>t.done).length;
-        const pct = linked.length? Math.round(done/linked.length*100) : 0;
-        return `<div class="card" style="--c:${p.status==='active'?'var(--ok)':'var(--ink-soft)'}"><b>${escapeHtml(p.name)}</b><p>${p.status==='active'?'Active':'Done'} &middot; <button class="del" data-tog="${p.id}">toggle</button> <button class="del" data-del="${p.id}">remove</button></p>
-        ${linked.length?`<div style="background:var(--line);border-radius:6px;height:6px;margin-top:9px;overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--ok)"></div></div><p style="margin-top:5px">${done}/${linked.length} tasks done (${pct}%)</p>`:'<p style="margin-top:5px">No tasks linked yet</p>'}
+        const taskPct = linked.length? Math.round(done/linked.length*100) : null;
+        const pct = (p.progress!=null)? p.progress : taskPct;
+        const open = openProjectId===p.id;
+        const ups = (p.updates||[]);
+        const color = p.status==='active'?'var(--ok)':p.status==='hold'?'#E3B955':'var(--ink-soft)';
+        return `<div class="card" style="--c:${color};${open?'grid-column:1/-1':''}"><b data-open="${p.id}" style="cursor:pointer;display:block">${escapeHtml(p.name)} <span style="font-weight:400;font-size:12px;color:var(--ink-soft)">${open?'▲':'▼ updates ('+ups.length+')'}</span></b><p>${projStatusLabel(p.status)} &middot; <button class="del" data-tog="${p.id}">toggle</button> <button class="del" data-del="${p.id}">remove</button></p>
+        ${pct!=null?`<div style="background:var(--line);border-radius:6px;height:6px;margin-top:9px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color}"></div></div><p style="margin-top:5px">${pct}% ${p.progress==null&&linked.length?`(${done}/${linked.length} tasks done)`:''}</p>`:'<p style="margin-top:5px">No progress yet</p>'}
+        ${p.next?`<p style="margin-top:4px"><b style="color:var(--ink)">Next:</b> ${escapeHtml(p.next)}</p>`:''}
+        ${open?`<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+          <div id="feed-${p.id}" style="max-height:300px;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
+            ${ups.length? ups.map(u=>`<div style="align-self:flex-end;max-width:85%;background:var(--forest);color:#fff;border-radius:12px 12px 2px 12px;padding:8px 12px;font-size:13.5px;white-space:pre-wrap">${escapeHtml(u.text)}<div style="font-size:10.5px;opacity:.75;margin-top:3px">${new Date(u.ts).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}${u.changes&&u.changes.length?' · ✓ '+escapeHtml(u.changes.join(', ')):''} <span data-delup="${p.id}:${u.id}" style="cursor:pointer;margin-left:6px">✕</span></div></div>`).join('') : '<div class="empty" style="padding:8px">No updates yet. Write what happened today.</div>'}
+          </div>
+          <form class="inline" data-upform="${p.id}"><input type="text" name="msg" placeholder="e.g. Pots delivered, 60% done. Next: install irrigation" style="flex:1" required><button type="submit">Send</button></form>
+          <p style="margin-top:6px;font-size:11.5px">Tip: write <b>60%</b> to set progress, <b>done</b>, <b>on hold</b> or <b>resume</b> to change status, and <b>next: …</b> to set the next step.</p>
+        </div>`:''}
         </div>`;
       }).join('') : '<div class="empty">No projects yet.</div>'}</div>
     </div>`;
+  el.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{ openProjectId = openProjectId==b.dataset.open?null:+b.dataset.open; renderView(); });
+  el.querySelectorAll('[data-upform]').forEach(f=>f.onsubmit=(e)=>{
+    e.preventDefault(); const p=data.projects.find(x=>x.id==f.dataset.upform); const text=new FormData(f).get('msg').trim(); if(!text) return;
+    const changes=parseProjectUpdate(text,p);
+    p.updates=p.updates||[]; p.updates.push({id:Date.now(),text,ts:Date.now(),changes});
+    save('projects'); renderView();
+    const feed=document.getElementById('feed-'+p.id); if(feed) feed.scrollTop=feed.scrollHeight;
+  });
+  el.querySelectorAll('[data-delup]').forEach(b=>b.onclick=()=>{
+    const [pid,uid]=b.dataset.delup.split(':'); const p=data.projects.find(x=>x.id==pid);
+    if(!confirm('Delete this update?')) return;
+    p.updates=(p.updates||[]).filter(u=>u.id!=uid); save('projects'); renderView();
+  });
   el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
     if(!confirm('Remove this project?')) return;
     data.projects=data.projects.filter(p=>p.id!=b.dataset.del); save('projects'); renderView();
   });
-  el.querySelectorAll('[data-tog]').forEach(b=>b.onclick=()=>{ const p=data.projects.find(p=>p.id==b.dataset.tog); p.status=p.status==='active'?'done':'active'; save('projects'); renderView(); });
-  el.querySelector('#addForm').onsubmit=(e)=>{ e.preventDefault(); const f=new FormData(e.target); data.projects.push({id:Date.now(),name:f.get('name'),status:'active'}); save('projects'); e.target.reset(); renderView(); };
+  el.querySelectorAll('[data-tog]').forEach(b=>b.onclick=()=>{ const p=data.projects.find(p=>p.id==b.dataset.tog); p.status=p.status==='active'?'done':'active'; if(p.status==='done') p.progress=100; save('projects'); renderView(); });
+  el.querySelector('#addForm').onsubmit=(e)=>{ e.preventDefault(); const f=new FormData(e.target); data.projects.push({id:Date.now(),name:f.get('name'),status:'active',updates:[]}); save('projects'); e.target.reset(); renderView(); };
 }
 
 function renderNotes(el){
