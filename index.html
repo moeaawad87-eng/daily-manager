@@ -230,18 +230,45 @@ const fsdocs = {}; SYNC_KEYS.forEach(k=>{ fsdocs[k] = firebase.firestore().colle
 let cloudReady=false;
 const syncTimers = {}, applyingRemote = {};
 function save(k){ store.set(k, data[k]); queueCloudSync(k); }
+// Firestore refuses any single document over 1 MB. Each category is one document,
+// so photos (receipts, backgrounds, notes) can push a category over the limit.
+const DOC_LIMIT = 1000000, DOC_WARN = 850000;
+const syncErrors = {};
+const SYNC_NAMES = {tasks:'Tasks',notes:'Notes',followups:'Follow-ups',projects:'Projects',expenses:'Expenses',backgrounds:'Background photos',schedule:'Schedule',surveys:'Site surveys',scratch:'Scratchpad'};
+function docSize(k){ try{ return new Blob([JSON.stringify({items:data[k]})]).size; }catch(e){ return 0; } }
+function setSyncError(k,msg){ if(msg) syncErrors[k]=msg; else delete syncErrors[k]; if(current==='settings') renderView(); }
+function pushToCloud(k){
+  const size = docSize(k);
+  if(size > DOC_LIMIT){
+    setSyncError(k, `${SYNC_NAMES[k]||k} is too big to sync (${(size/1e6).toFixed(2)} MB, limit 1 MB). It is saved on this device only. Remove some photos or receipts here to sync again.`);
+    return;
+  }
+  fsdocs[k].set({items:data[k]})
+    .then(()=>setSyncError(k,''))
+    .catch(err=>setSyncError(k, `${SYNC_NAMES[k]||k} did not sync: ${String(err&&err.message||err).slice(0,140)}`));
+}
 function queueCloudSync(k){
-  if(applyingRemote[k]) return;
+  if(applyingRemote[k] || !cloudReady) return; // never write before we have loaded the cloud copy
   clearTimeout(syncTimers[k]);
-  syncTimers[k] = setTimeout(()=>{ fsdocs[k].set({items:data[k]}).catch(()=>{}); }, 600);
+  syncTimers[k] = setTimeout(()=>pushToCloud(k), 600);
 }
 let syncStatus = 'checking';
+let cloudListeners = [];
+// Private sign-in: only the account created in Firebase can read or write the data.
+firebase.auth().onAuthStateChanged(u=>{
+  if(u && !u.isAnonymous){ initCloud(); }
+  else {
+    if(u && u.isAnonymous) firebase.auth().signOut().catch(()=>{}); // drop the old open-access session
+    cloudListeners.forEach(f=>f()); cloudListeners=[];
+    cloudReady=false; syncStatus='signedout'; renderNav(); if(current==='settings') renderView();
+  }
+});
+async function cloudSignIn(email, password){
+  await firebase.auth().signInWithEmailAndPassword(email, password);
+}
 async function initCloud(){
   try{
-    await new Promise((resolve,reject)=>{
-      firebase.auth().signInAnonymously().catch(reject);
-      firebase.auth().onAuthStateChanged(u=>{ if(u) resolve(); });
-    });
+    syncStatus='checking';
     for(const k of SYNC_KEYS){
       const snap = await fsdocs[k].get();
       if(snap.exists){
@@ -250,13 +277,13 @@ async function initCloud(){
       } else {
         // First run after the storage upgrade: this category has no cloud copy yet.
         // Push whatever is already saved on this device so nothing looks lost.
-        fsdocs[k].set({items: data[k]}).catch(()=>{});
+        pushToCloud(k);
       }
     }
     cloudReady = true; syncStatus='connected';
     renderNav(); renderView(); applyBackground();
     SYNC_KEYS.forEach(k=>{
-      fsdocs[k].onSnapshot(snap=>{
+      cloudListeners.push(fsdocs[k].onSnapshot(snap=>{
         if(!snap.exists || snap.metadata.hasPendingWrites) return;
         const remote = snap.data();
         if(!remote || !Array.isArray(remote.items)) return;
@@ -264,9 +291,9 @@ async function initCloud(){
           data[k]=remote.items; store.set(k,remote.items);
           applyingRemote[k]=true; renderNav(); renderView(); applyBackground(); applyingRemote[k]=false;
         }
-      });
+      }, err=>setSyncError(k, `${SYNC_NAMES[k]||k} stopped syncing: ${String(err&&err.message||err).slice(0,140)}`)));
     });
-  }catch(e){ syncStatus='unavailable'; if(current==='settings') renderView(); }
+  }catch(e){ syncStatus='unavailable'; syncErrors._load = String(e&&e.message||e).slice(0,160); if(current==='settings') renderView(); }
 }
 
 const views = ['today','calendar','schedule','tasks','followups','projects','surveys','notes','scratch','expenses','settings'];
@@ -1256,7 +1283,16 @@ function renderSettings(el){
     </div>
     <div class="panel">
       <h2>Cloud sync</h2>
-      <div class="count">${syncStatus==='connected'?'Connected — changes sync live across every device open on this app.':syncStatus==='checking'?'Connecting…':'Could not reach the cloud database right now — check your internet connection. Your data is still safe locally.'}</div>
+      ${syncStatus==='signedout'?`<div class="count">Sign in to sync your data across your devices. Until then, everything is saved on this device only.</div>
+      <form id="signInForm" style="display:flex;flex-direction:column;gap:8px;max-width:340px">
+        <input type="email" name="email" autocomplete="username" placeholder="Email" required style="padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <input type="password" name="password" autocomplete="current-password" placeholder="Password" required style="padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+        <div><button class="addbtn" type="submit">Sign in</button> <span id="signInMsg" style="font-size:12.5px;margin-left:6px;color:var(--clay)"></span></div>
+      </form>`
+      :`<div class="count">${syncStatus==='connected'?'Connected — changes sync live across every device signed in to this app.':syncStatus==='checking'?'Connecting…':'Could not reach the cloud database right now — check your internet connection. Your data is still safe locally.'}</div>
+      ${firebase.auth().currentUser?`<div style="font-size:12.5px;color:var(--ink-soft)">Signed in as ${escapeHtml(firebase.auth().currentUser.email||'')} · <button class="del" id="signOutBtn" style="text-decoration:underline">Sign out</button></div>`:''}`}
+      ${Object.values(syncErrors).map(m=>`<p style="color:var(--clay);font-size:13px;margin-top:8px">⚠ ${escapeHtml(m)}</p>`).join('')}
+      ${syncStatus==='connected'?SYNC_KEYS.filter(k=>docSize(k)>DOC_WARN&&!syncErrors[k]).map(k=>`<p style="color:var(--clay);font-size:13px;margin-top:8px">${escapeHtml(SYNC_NAMES[k])} is almost full (${(docSize(k)/1e6).toFixed(2)} of 1 MB). Remove a few photos or receipts soon.</p>`).join(''):''}
     </div>
     <div class="panel">
       <h2>Smart project updates (free Google Gemini key)</h2>
@@ -1289,6 +1325,15 @@ function renderSettings(el){
     if(!confirm('Remove this background photo?')) return;
     data.backgrounds.splice(Number(b.dataset.bgdel),1); save('backgrounds'); renderView(); applyBackground();
   });
+  const sif = el.querySelector('#signInForm');
+  if(sif) sif.onsubmit=async(e)=>{
+    e.preventDefault(); const f=new FormData(sif); const msg=el.querySelector('#signInMsg');
+    msg.textContent='Signing in…';
+    try{ await cloudSignIn(String(f.get('email')).trim(), String(f.get('password'))); }
+    catch(err){ msg.textContent = /invalid|wrong|not-found|credential/i.test(err.code||err.message) ? 'Wrong email or password.' : 'Could not sign in: '+String(err.message).slice(0,100); }
+  };
+  const sob = el.querySelector('#signOutBtn');
+  if(sob) sob.onclick=()=>{ if(confirm('Sign out on this device? Your data stays in the cloud.')) firebase.auth().signOut(); };
   el.querySelector('#exportBtn').onclick=()=>{
     const payload = JSON.stringify(data, null, 2);
     const a=document.createElement('a'); a.href='data:application/json,'+encodeURIComponent(payload); a.download='daily-manager-backup.json'; a.click();
@@ -1354,7 +1399,6 @@ else{
 renderNav();
 renderView();
 applyBackground();
-initCloud();
 function checkNotify(){
   if(!('Notification' in window) || Notification.permission!=='granted') return;
   const t = todayISO();
