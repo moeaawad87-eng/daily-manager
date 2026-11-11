@@ -619,13 +619,13 @@ function parseProjectUpdate(text, p){
 }
 function projStatusLabel(s){ return s==='done'?'Done':s==='hold'?'On hold':'Active'; }
 async function gfetch(url,opts){
-  const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),20000);
+  const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),60000);
   try{
     const r=await fetch(url,Object.assign({signal:ctl.signal},opts||{}));
     if(!r.ok){ let msg=''; try{ msg=((await r.json()).error||{}).message||''; }catch(e){} throw new Error('Google replied '+r.status+(msg?': '+msg.slice(0,140):'')); }
     return r;
   }catch(e){
-    if(e.name==='AbortError') throw new Error('no answer from Google after 20 seconds (check internet / try again)');
+    if(e.name==='AbortError') throw new Error('no answer from Google after 60 seconds (try again in a minute)');
     if(e instanceof TypeError) throw new Error('could not reach Google ('+e.message+')');
     throw e;
   }finally{ clearTimeout(t); }
@@ -635,7 +635,7 @@ async function geminiPickModel(key){
   const r=await gfetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key='+encodeURIComponent(key));
   const list=((await r.json()).models||[]).filter(x=>(x.supportedGenerationMethods||[]).includes('generateContent')).map(x=>x.name.replace('models/',''));
   const ok=list.filter(n=>/^gemini-/.test(n)&&/flash/.test(n)&&!/(image|tts|live|audio|thinking|exp|vision|embedding)/.test(n));
-  m = ok.find(n=>n==='gemini-flash-latest') || ok.filter(n=>!/lite/.test(n)).sort().reverse()[0] || ok.sort().reverse()[0];
+  m = ok.find(n=>n==='gemini-flash-lite-latest') || ok.filter(n=>/lite/.test(n)&&!/preview/.test(n)).sort().reverse()[0] || ok.find(n=>n==='gemini-flash-latest') || ok.filter(n=>!/lite/.test(n)).sort().reverse()[0] || ok.sort().reverse()[0];
   if(!m) throw new Error('no usable model found');
   store.set('geminiModel',m); return m;
 }
@@ -1296,7 +1296,7 @@ function renderSettings(el){
   el.querySelector('#geminiSave').onclick=()=>{ store.set('geminiKey',el.querySelector('#geminiKey').value.trim()); store.set('geminiModel',''); el.querySelector('#geminiMsg').textContent='Saved.'; };
   el.querySelector('#geminiTest').onclick=async()=>{
     const m=el.querySelector('#geminiMsg'); store.set('geminiKey',el.querySelector('#geminiKey').value.trim()); store.set('geminiModel','');
-    m.textContent='Testing… (up to 20 seconds)';
+    m.textContent='Testing… (up to 60 seconds)';
     try{ const r=await aiProjectUpdate({name:'Test project',progress:null,status:'active',next:'',updates:[]},'Delivered 30 of 60 pots. Next: plant them tomorrow.'); m.textContent='Works ✓ (read: '+JSON.stringify(r)+')'; }
     catch(err){ m.textContent='Failed: '+err.message; }
   };
