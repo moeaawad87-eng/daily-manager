@@ -215,6 +215,7 @@ let data = {
   schedule: store.get('schedule', []),
   surveys: store.get('surveys', []),
   scratch: store.get('scratch', ['']),
+  agents: store.get('agents', [{}]),
 };
 const firebaseConfig = {
   apiKey: "AIzaSyBvQ1-8G5H-_YnX3Cvna7i6nwWaykxKU_M",
@@ -225,7 +226,7 @@ const firebaseConfig = {
   appId: "1:510364490724:web:6862b52337d98a3f5005f1"
 };
 firebase.initializeApp(firebaseConfig);
-const SYNC_KEYS = ['tasks','notes','followups','projects','expenses','backgrounds','schedule','surveys','scratch'];
+const SYNC_KEYS = ['tasks','notes','followups','projects','expenses','backgrounds','schedule','surveys','scratch','agents'];
 const fsdocs = {}; SYNC_KEYS.forEach(k=>{ fsdocs[k] = firebase.firestore().collection('app').doc(k); });
 let cloudReady=false;
 const syncTimers = {}, applyingRemote = {};
@@ -234,7 +235,7 @@ function save(k){ store.set(k, data[k]); queueCloudSync(k); }
 // so photos (receipts, backgrounds, notes) can push a category over the limit.
 const DOC_LIMIT = 1000000, DOC_WARN = 850000;
 const syncErrors = {};
-const SYNC_NAMES = {tasks:'Tasks',notes:'Notes',followups:'Follow-ups',projects:'Projects',expenses:'Expenses',backgrounds:'Background photos',schedule:'Schedule',surveys:'Site surveys',scratch:'Scratchpad'};
+const SYNC_NAMES = {tasks:'Tasks',notes:'Notes',followups:'Follow-ups',projects:'Projects',expenses:'Expenses',backgrounds:'Background photos',schedule:'Schedule',surveys:'Site surveys',scratch:'Scratchpad',agents:'AI agents'};
 function docSize(k){ try{ return new Blob([JSON.stringify({items:data[k]})]).size; }catch(e){ return 0; } }
 function setSyncError(k,msg){ if(msg) syncErrors[k]=msg; else delete syncErrors[k]; if(current==='settings') renderView(); }
 // ---- Photos: each photo / receipt lives in its own cloud document ("blobs"),
@@ -374,9 +375,9 @@ async function initCloud(){
   }catch(e){ syncStatus='unavailable'; syncErrors._load = String(e&&e.message||e).slice(0,160); if(current==='settings') renderView(); }
 }
 
-const views = ['today','calendar','schedule','tasks','followups','projects','surveys','notes','scratch','expenses','settings'];
-const icons = {today:'☀',calendar:'▦',schedule:'⏰',tasks:'☑',followups:'↻',projects:'◧',surveys:'📐',notes:'▤',scratch:'✎',expenses:'▢',settings:'⚙'};
-const labels = {followups:'Follow-ups',settings:'Settings',surveys:'Site Surveys',scratch:'Scratchpad'};
+const views = ['today','agents','calendar','schedule','tasks','followups','projects','surveys','notes','scratch','expenses','settings'];
+const icons = {today:'☀',agents:'✦',calendar:'▦',schedule:'⏰',tasks:'☑',followups:'↻',projects:'◧',surveys:'📐',notes:'▤',scratch:'✎',expenses:'▢',settings:'⚙'};
+const labels = {agents:'AI Agents',followups:'Follow-ups',settings:'Settings',surveys:'Site Surveys',scratch:'Scratchpad'};
 let current = (views.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'today');
 history.replaceState(null,'','#'+current);
 
@@ -455,6 +456,7 @@ function renderView(){
   if(current==='schedule') return renderSchedule(el);
   if(current==='surveys') return renderSurveys(el);
   if(current==='settings') return renderSettings(el);
+  if(current==='agents') return renderAgents(el);
 }
 
 const QUOTES = [
@@ -504,6 +506,7 @@ function renderToday(el){
     {v:'followups', label:'Follow-ups', icon:'↻', count:data.followups.filter(f=>!f.done).length, c:'#58BDB0'},
     {v:'expenses', label:'Expenses', icon:'▢', count:data.expenses.length, c:'#DFE3EC', dark:true},
     {v:'scratch', label:'Scratchpad', icon:'✎', count:null, c:'#F4DDE3', dark:true},
+    {v:'agents', label:'AI Agents', icon:'✦', count:null, c:'#3B4A7D'},
   ];
   el.innerHTML = `
     <div class="hero" style="${heroImg?`background-image:url(${heroImg})`:''}">
@@ -522,6 +525,7 @@ function renderToday(el){
         <div class="qicon">${q.icon}</div><div class="qlabel">${q.label}</div>${q.count!==null?`<div class="qcount">${q.count}</div>`:''}
       </button>`).join('')}</div>
     ${aiPanelHtml()}
+    ${store.get('geminiKey','')?briefHtml(true):''}
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
       <div><div class="eyebrow">TODAY'S FOCUS</div>
       <h1 class="title" style="font-size:22px">Let's make today clear and productive</h1></div>
@@ -575,6 +579,7 @@ function renderToday(el){
     else if(which==='expenses'){ selectedStat=which; navigateTo('expenses'); }
   });
   bindAi(el);
+  bindBrief(el); setTimeout(maybeAutoBrief,0);
   el.querySelectorAll('#aiPanel [data-nav]').forEach(b=>b.onclick=()=>navigateTo(b.dataset.nav));
 }
 
@@ -1444,6 +1449,383 @@ function renderSettings(el){
   };
   const rp = el.querySelector('#removePin'); if(rp) rp.onclick=()=>{ localStorage.removeItem('mdm_pin'); renderView(); };
   const nb = el.querySelector('#enableNotif'); if(nb) nb.onclick=()=>{ Notification.requestPermission().then(()=>{ renderView(); checkNotify(); }); };
+}
+
+// ================= AI AGENTS: Morning brief · Email secretary · Competitor watch =================
+// Settings that sync across devices live in data.agents[0]; keys and emails stay on this device only.
+function AG(){
+  if(!Array.isArray(data.agents) || !data.agents[0] || typeof data.agents[0]!=='object') data.agents=[{}];
+  const a=data.agents[0];
+  a.topics = a.topics || 'Landscaping, irrigation and softscape news in the UAE\nSwimming pool industry and new pool products\nNew construction, real-estate and villa projects or tenders in Abu Dhabi\nNew AI tools that help a small business or a sales manager';
+  a.lang = a.lang || 'ar';
+  a.channels = a.channels || [];
+  a.reports = a.reports || [];
+  a.signature = a.signature!=null ? a.signature : 'Best regards,\nMohamad\nBusiness Development Manager\nThe Gardenian For Garden Services\n+971 50 155 5910 | sales@thegardenian.com';
+  return a;
+}
+function agSave(){ save('agents'); }
+const AG_BIZ = 'Mohamad is Business Development Manager at The Gardenian For Garden Services, a landscaping company in Abu Dhabi (softscape, hardscape, irrigation, swimming pools, indoor plants, maintenance contracts).';
+function agLangLine(){ return AG().lang==='ar' ? 'Write all text values in Arabic (clear Modern Standard Arabic).' : 'Write all text values in English.'; }
+let agTab = 'brief';
+const agState = {brief:{busy:false,error:''}, mail:{busy:false,error:'',status:''}, comp:{busy:false,error:'',status:''}};
+
+// ---- One Gemini call for all agents: optional Google Search and optional video
+async function geminiAgent(parts,{search=false,json=true}={}){
+  const key=store.get('geminiKey',''); if(!key) throw new Error('Add your Gemini key in Settings first');
+  for(let attempt=0;attempt<2;attempt++){
+    const model=await geminiPickModel(key);
+    try{
+      const body={contents:[{parts}],generationConfig:{temperature:0.3}};
+      if(search) body.tools=[{google_search:{}}];
+      else if(json) body.generationConfig.responseMimeType='application/json';
+      const r=await gfetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const j=await r.json(); const c=j.candidates&&j.candidates[0];
+      const text=c&&c.content&&(c.content.parts||[]).map(x=>x.text||'').join('');
+      if(!text) throw new Error('empty answer');
+      const sources=((c.groundingMetadata||{}).groundingChunks||[]).map(g=>g.web).filter(Boolean).map(w=>({title:w.title||'',uri:w.uri||''}));
+      if(!json) return {text,sources};
+      const m=text.replace(/```json|```/g,'').match(/[\[{][\s\S]*[\]}]/);
+      if(!m) throw new Error('could not read the answer');
+      return {data:JSON.parse(m[0]),sources};
+    }catch(e){ if(attempt===0 && /\b404\b/.test(e.message)){ store.set('geminiModel',''); continue; } throw e; }
+  }
+}
+
+// ================= 1) Morning brief =================
+async function runBrief(){
+  const s=agState.brief; if(s.busy) return; s.busy=true; s.error=''; if(current==='agents'||current==='today') renderView();
+  const a=AG(); const t=todayISO();
+  const prompt=`${AG_BIZ}
+Today is ${t}. Search the web for the most recent news (prefer the last 3 days, never older than 2 weeks) on these topics:
+${a.topics}
+
+Pick the 3 items that matter most for his work and business plans. ${agLangLine()}
+Return ONLY JSON, no other text: {"items":[{"title":string,"summary":"2 short sentences","why":"1 sentence: why it matters for Mohamad / The Gardenian","source":"publication or site name","date":"YYYY-MM-DD or empty"}]}`;
+  try{
+    const r=await geminiAgent([{text:prompt}],{search:true,json:true});
+    const items=(r.data.items||r.data||[]).slice(0,3);
+    if(!items.length) throw new Error('no news found');
+    a.brief={date:t,at:Date.now(),items,sources:r.sources.slice(0,8)}; agSave();
+  }catch(e){ s.error='Morning brief failed: '+e.message; }
+  finally{ s.busy=false; if(current==='agents'||current==='today') renderView(); }
+}
+let briefAutoTried=false;
+function maybeAutoBrief(){
+  if(briefAutoTried || !store.get('geminiKey','')) return;
+  const b=AG().brief; if(b && b.date===todayISO()) return;
+  if(syncStatus==='checking'){ setTimeout(maybeAutoBrief,2000); return; } // wait for the cloud copy, so devices don't both run it
+  briefAutoTried=true; runBrief();
+}
+function briefHtml(compact){
+  const a=AG(), b=a.brief, s=agState.brief, isToday=b&&b.date===todayISO();
+  const dir=a.lang==='ar'?'rtl':'ltr';
+  const items=b?b.items:[];
+  return `<div class="panel" id="briefPanel">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <div><h2>☕ Morning brief</h2><div class="count" style="margin-bottom:6px">${s.busy?'Searching the news… (up to a minute)':b?(isToday?'Today':'Last updated '+fmtDate(b.date))+' · top 3 for your work':'3 news items that matter for your work, every morning'}</div></div>
+      <div style="display:flex;gap:6px">${compact?`<button class="filebtn" data-nav="agents" style="border-style:solid">All agents</button>`:''}<button class="addbtn" id="briefRun" ${s.busy?'disabled':''}>${s.busy?'Working…':isToday?'Refresh':'Get today\'s brief'}</button></div>
+    </div>
+    ${s.error?`<p style="color:var(--clay);font-size:13px">${escapeHtml(s.error)}</p>`:''}
+    ${!store.get('geminiKey','')?`<div class="count">Needs your free Gemini key. <button class="del" data-nav="settings" style="text-decoration:underline">Open Settings</button></div>`:''}
+    <div dir="${dir}">${items.map((it,i)=>`<div class="row" style="flex-direction:column;gap:2px">
+      <b>${i+1}. ${escapeHtml(it.title||'')}</b>
+      <div style="font-size:13.5px">${escapeHtml(it.summary||'')}</div>
+      ${it.why?`<div style="font-size:13px;color:var(--ok)">💡 ${escapeHtml(it.why)}</div>`:''}
+      <div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(it.source||'')}${it.date?' · '+escapeHtml(it.date):''}</div>
+    </div>`).join('')}</div>
+    ${b&&b.sources&&b.sources.length&&!compact?`<div style="font-size:12px;color:var(--ink-soft);margin-top:8px">Sources: ${b.sources.map(x=>`<a href="${escapeHtml(x.uri)}" target="_blank" rel="noopener" style="color:var(--sky)">${escapeHtml(x.title||'link')}</a>`).join(' · ')}</div>`:''}
+  </div>`;
+}
+function bindBrief(el){
+  const b=el.querySelector('#briefRun'); if(b) b.onclick=()=>runBrief();
+  el.querySelectorAll('#briefPanel [data-nav]').forEach(x=>x.onclick=()=>navigateTo(x.dataset.nav));
+}
+
+// ================= 2) Email secretary (Gmail) =================
+const GMAIL_SCOPES='https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose';
+let gToken=null, gTokenExp=0, gisLoading=null;
+function loadGis(){
+  if(window.google&&google.accounts&&google.accounts.oauth2) return Promise.resolve();
+  if(gisLoading) return gisLoading;
+  gisLoading=new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://accounts.google.com/gsi/client'; s.onload=res; s.onerror=()=>{gisLoading=null; rej(new Error('could not load Google sign-in'));}; document.head.appendChild(s); });
+  return gisLoading;
+}
+function gmailToken(){
+  if(gToken && Date.now()<gTokenExp) return Promise.resolve(gToken);
+  const cid=store.get('gClientId','');
+  if(!cid) return Promise.reject(new Error('Add your Google Client ID in the setup box below first'));
+  if(!(window.google&&google.accounts&&google.accounts.oauth2)) return Promise.reject(new Error('Google sign-in is still loading, tap again'));
+  return new Promise((res,rej)=>{
+    const tc=google.accounts.oauth2.initTokenClient({client_id:cid,scope:GMAIL_SCOPES,
+      callback:(r)=>{ if(r.error) return rej(new Error(r.error_description||r.error)); gToken=r.access_token; gTokenExp=Date.now()+(Number(r.expires_in||3600)-60)*1000; res(gToken); },
+      error_callback:(e)=>rej(new Error(e&&e.type==='popup_closed'?'Google window was closed':'Google sign-in failed ('+(e&&e.type||'')+')'))});
+    tc.requestAccessToken({prompt:''});
+  });
+}
+async function gapi(path,opts={}){
+  const tok=await gmailToken();
+  const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/'+path,{...opts,headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json',...(opts.headers||{})}});
+  if(r.status===401){ gToken=null; throw new Error('Google sign-in expired, tap again'); }
+  if(!r.ok){ let m=''; try{ m=((await r.json()).error||{}).message||''; }catch(e){} throw new Error('Gmail replied '+r.status+(m?': '+m.slice(0,140):'')); }
+  return r.json();
+}
+function b64urlDecode(s){ try{ const bin=atob((s||'').replace(/-/g,'+').replace(/_/g,'/')); return new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0))); }catch(e){ return ''; } }
+function b64utf8(s){ const bytes=new TextEncoder().encode(s); let bin=''; bytes.forEach(b=>bin+=String.fromCharCode(b)); return btoa(bin); }
+function mailBody(p){
+  let plain='', html='';
+  (function walk(x){ if(!x) return; if(x.mimeType==='text/plain'&&x.body&&x.body.data&&!plain) plain=b64urlDecode(x.body.data); else if(x.mimeType==='text/html'&&x.body&&x.body.data&&!html) html=b64urlDecode(x.body.data); (x.parts||[]).forEach(walk); })(p);
+  let t=plain||html.replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&');
+  t=t.split(/\n(?:On .{5,120}wrote:|From: .+\nSent: )/)[0]; // drop the quoted older thread
+  return t.replace(/\s+\n/g,'\n').replace(/[ \t]{2,}/g,' ').trim().slice(0,1800);
+}
+async function runMail(){
+  const s=agState.mail; if(s.busy) return;
+  s.error=''; s.busy=true; s.status='Signing in to Google…'; renderView();
+  try{
+    await gmailToken();
+    const days=store.get('mailDays',2);
+    s.status='Reading your inbox…'; renderView();
+    const list=await gapi('messages?maxResults=20&q='+encodeURIComponent(`in:inbox newer_than:${days}d -category:promotions -category:social`));
+    const ids=(list.messages||[]).map(m=>m.id);
+    if(!ids.length){ store.set('mailCache',{at:Date.now(),items:[]}); s.status=''; return; }
+    const msgs=await Promise.all(ids.map(id=>gapi('messages/'+id+'?format=full')));
+    const mails=msgs.map(m=>{ const h={}; (m.payload.headers||[]).forEach(x=>h[x.name.toLowerCase()]=x.value);
+      return {id:m.id,threadId:m.threadId,from:h.from||'',to:h.to||'',subject:h.subject||'(no subject)',date:h.date||'',msgId:h['message-id']||'',refs:h.references||'',unread:(m.labelIds||[]).includes('UNREAD'),body:mailBody(m.payload)||m.snippet||''}; });
+    s.status='Sorting and drafting replies with AI…'; renderView();
+    const a=AG();
+    const prompt=`${AG_BIZ} You are his personal email secretary.
+Sort these emails and draft replies. Email list (JSON): ${JSON.stringify(mails.map(m=>({id:m.id,from:m.from,subject:m.subject,date:m.date,body:m.body})))}
+
+For each email return:
+- category: "client" (customer or potential customer, quotation, site visit, complaint), "supplier", "internal" (his company/colleagues), "info" (newsletters, notifications, receipts), "other"
+- importance: 3 = needs action today (client request, deadline, payment, complaint), 2 = needs a reply soon, 1 = just for information
+- summary: one short sentence, ${a.lang==='ar'?'in Arabic':'in English'}
+- action: what Mohamad should do, short, ${a.lang==='ar'?'in Arabic':'in English'} (empty if nothing)
+- needs_reply: true/false (false for notifications, newsletters, automated mails)
+- reply: if needs_reply, a professional, polite and short reply draft written IN THE SAME LANGUAGE AS THE EMAIL, ready to send, without a subject line and without a signature (the signature is added automatically). Never invent prices, dates or promises; where a fact is needed, write a placeholder like [date]. Otherwise "".
+Return ONLY JSON: {"emails":[{"id":string,"category":string,"importance":1|2|3,"summary":string,"action":string,"needs_reply":boolean,"reply":string}]}`;
+    const r=await geminiAgent([{text:prompt}],{json:true});
+    const byId={}; (r.data.emails||[]).forEach(e=>byId[e.id]=e);
+    const items=mails.map(m=>({...m,body:undefined,...(byId[m.id]||{category:'other',importance:1,summary:m.subject,action:'',needs_reply:false,reply:''})}));
+    items.sort((x,y)=>(y.importance||0)-(x.importance||0));
+    store.set('mailCache',{at:Date.now(),items}); s.status='';
+  }catch(e){ s.error=e.message; s.status=''; }
+  finally{ s.busy=false; if(current==='agents') renderView(); }
+}
+function mimeWord(s){ return /^[\x20-\x7e]*$/.test(s)?s:'=?UTF-8?B?'+b64utf8(s)+'?='; }
+async function saveGmailDraft(m,text){
+  const to=(m.from.match(/<([^>]+)>/)||[0,m.from])[1];
+  const subj=/^re:/i.test(m.subject)?m.subject:'Re: '+m.subject;
+  const sig=AG().signature;
+  const raw=[`To: ${to}`,`Subject: ${mimeWord(subj)}`, m.msgId?`In-Reply-To: ${m.msgId}`:'', m.msgId?`References: ${(m.refs?m.refs+' ':'')+m.msgId}`:'',
+    'MIME-Version: 1.0','Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',
+    b64utf8(text+(sig?'\n\n'+sig:'')).replace(/.{76}/g,'$&\r\n')].filter((x,i)=>x!==''||i>4).join('\r\n');
+  const enc=b64utf8(raw).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  await gapi('drafts',{method:'POST',body:JSON.stringify({message:{raw:enc,threadId:m.threadId}})});
+}
+const CAT_COL={client:'var(--clay)',supplier:'var(--gold)',internal:'var(--sky)',info:'var(--ink-soft)',other:'var(--plum)'};
+function mailHtml(){
+  const s=agState.mail, cache=store.get('mailCache',null), cid=store.get('gClientId','');
+  const items=cache?cache.items:[];
+  const imp={3:'🔴 Today',2:'🟠 Soon',1:'⚪ FYI'};
+  return `<div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <div><h2>📧 Email secretary</h2><div class="count" style="margin-bottom:6px">${s.busy?escapeHtml(s.status||'Working…'):cache?'Checked '+new Date(cache.at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+' · '+items.length+' emails, most important first':'Reads your new emails, sorts them and drafts the replies'}</div></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <select id="mailDays" style="padding:7px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">${[[1,'Last 24h'],[2,'Last 2 days'],[7,'Last week']].map(([v,l])=>`<option value="${v}" ${store.get('mailDays',2)==v?'selected':''}>${l}</option>`).join('')}</select>
+        <button class="addbtn" id="mailRun" ${s.busy||!cid?'disabled':''}>${s.busy?'Working…':'Check my email'}</button></div>
+    </div>
+    ${s.error?`<p style="color:var(--clay);font-size:13px">${escapeHtml(s.error)}</p>`:''}
+    ${!cid?`<div class="count">One-time setup needed — see "Setup" at the bottom of this page.</div>`:''}
+    ${items.map((m,i)=>`<div class="row" style="flex-direction:column;gap:4px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%">
+        <span style="font-size:12px">${imp[m.importance]||''}</span>
+        <span class="tag" style="background:var(--cream);color:${CAT_COL[m.category]||'var(--ink-soft)'}">${escapeHtml(m.category||'')}</span>
+        <b style="flex:1;min-width:160px">${escapeHtml(m.subject)}</b>
+        <span class="meta">${escapeHtml((m.from.split('<')[0]||m.from).replace(/"/g,'').trim())}</span></div>
+      <div dir="auto" style="font-size:13.5px">${escapeHtml(m.summary||'')}</div>
+      ${m.action?`<div dir="auto" style="font-size:13px;color:var(--ok)">➜ ${escapeHtml(m.action)}</div>`:''}
+      ${m.needs_reply?`<details ${m.importance===3?'open':''} style="margin-top:4px"><summary style="font-size:13px;cursor:pointer;color:var(--forest)">Draft reply</summary>
+        <textarea dir="auto" data-mailtext="${i}" rows="6" style="width:100%;margin-top:6px;padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">${escapeHtml(m.reply||'')}</textarea>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+          <button class="addbtn" data-maildraft="${i}">Save to Gmail drafts</button>
+          <button class="filebtn" data-mailcopy="${i}" style="border-style:solid">Copy</button>
+          <span data-mailmsg="${i}" style="font-size:12.5px;align-self:center"></span></div></details>`:''}
+      <div style="display:flex;gap:10px;margin-top:2px">
+        <a href="https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(m.threadId)}" target="_blank" rel="noopener" class="del" style="text-decoration:underline">Open in Gmail</a>
+        <button class="del" data-mailtask="${i}" style="text-decoration:underline">+ Add as task</button></div>
+    </div>`).join('')}
+    ${cache&&!items.length?'<div class="empty">No new emails in this period.</div>':''}
+  </div>`;
+}
+function bindMail(el){
+  if(store.get('gClientId','')) loadGis().catch(()=>{});
+  const run=el.querySelector('#mailRun'); if(run) run.onclick=()=>runMail();
+  const d=el.querySelector('#mailDays'); if(d) d.onchange=()=>store.set('mailDays',Number(d.value));
+  const cache=store.get('mailCache',null); const items=cache?cache.items:[];
+  const txt=i=>el.querySelector(`[data-mailtext="${i}"]`).value;
+  el.querySelectorAll('[data-mailtext]').forEach(t=>t.onchange=()=>{ items[t.dataset.mailtext].reply=t.value; store.set('mailCache',cache); });
+  el.querySelectorAll('[data-maildraft]').forEach(b=>b.onclick=async()=>{
+    const i=b.dataset.maildraft, msg=el.querySelector(`[data-mailmsg="${i}"]`); msg.style.color=''; msg.textContent='Saving…';
+    try{ await saveGmailDraft(items[i],txt(i)); msg.textContent='✓ Saved in Gmail drafts (with your signature)'; }
+    catch(e){ msg.style.color='var(--clay)'; msg.textContent=e.message; }
+  });
+  el.querySelectorAll('[data-mailcopy]').forEach(b=>b.onclick=async()=>{
+    const i=b.dataset.mailcopy, sig=AG().signature;
+    try{ await navigator.clipboard.writeText(txt(i)+(sig?'\n\n'+sig:'')); el.querySelector(`[data-mailmsg="${i}"]`).textContent='✓ Copied'; }catch(e){}
+  });
+  el.querySelectorAll('[data-mailtask]').forEach(b=>b.onclick=()=>{
+    const m=items[b.dataset.mailtask];
+    data.tasks.push({id:Date.now(),title:(m.action||'Reply: '+m.subject).slice(0,140),note:'Email from '+m.from+' — '+m.subject,tag:'work',priority:m.importance===3?'high':'',due:todayISO(),recur:'',done:false});
+    save('tasks'); b.textContent='✓ Added to tasks'; b.disabled=true; renderNav();
+  });
+}
+
+// ================= 3) Competitor watch (YouTube) =================
+async function yt(path){
+  const key=store.get('ytKey',''); if(!key) throw new Error('Add your YouTube API key in the setup box below first');
+  const r=await fetch('https://www.googleapis.com/youtube/v3/'+path+(path.includes('?')?'&':'?')+'key='+encodeURIComponent(key));
+  if(!r.ok){ let m=''; try{ m=((await r.json()).error||{}).message||''; }catch(e){} throw new Error('YouTube replied '+r.status+(m?': '+m.replace(/<[^>]+>/g,'').slice(0,140):'')); }
+  return r.json();
+}
+async function addChannel(input){
+  input=input.trim(); if(!input) return;
+  let q;
+  const idm=input.match(/(UC[\w-]{20,})/), hm=input.match(/@([\w.\-]+)/);
+  if(idm) q='id='+idm[1]; else if(hm) q='forHandle=@'+encodeURIComponent(hm[1]);
+  else { const s=await yt('search?part=snippet&type=channel&maxResults=1&q='+encodeURIComponent(input)); const c=(s.items||[])[0]; if(!c) throw new Error('channel not found'); q='id='+c.snippet.channelId; }
+  const r=await yt('channels?part=snippet,contentDetails&'+q); const c=(r.items||[])[0];
+  if(!c) throw new Error('channel not found — paste the channel link, e.g. youtube.com/@name');
+  const a=AG(); if(a.channels.some(x=>x.id===c.id)) throw new Error('already watching this channel');
+  a.channels.push({id:c.id,title:c.snippet.title,thumb:((c.snippet.thumbnails||{}).default||{}).url||'',uploads:c.contentDetails.relatedPlaylists.uploads,seen:[],videos:[],checked:0});
+  agSave(); await checkChannels([a.channels[a.channels.length-1]],true);
+}
+async function checkChannels(list,firstTime){
+  const a=AG(); list=list||a.channels;
+  for(const ch of list){
+    const r=await yt('playlistItems?part=snippet&maxResults=6&playlistId='+ch.uploads);
+    const vids=(r.items||[]).map(v=>({id:v.snippet.resourceId.videoId,title:v.snippet.title,date:(v.snippet.publishedAt||'').slice(0,10),desc:(v.snippet.description||'').slice(0,600),thumb:((v.snippet.thumbnails||{}).medium||{}).url||''}));
+    if(firstTime) ch.seen=vids.slice(1).map(v=>v.id); // treat only the latest video as new when you first add a channel
+    ch.videos=vids.map(v=>({...v,isNew:!ch.seen.includes(v.id)}));
+    ch.checked=Date.now();
+  }
+  agSave();
+}
+async function analyzeVideo(ch,v){
+  const a=AG();
+  const prompt=`${AG_BIZ} This video was posted by a competitor / similar channel "${ch.title}". Title: "${v.title}". Description: ${v.desc}
+Analyse it for Mohamad. ${agLangLine()}
+Return ONLY JSON: {"idea":"the main idea of the video in 1-2 sentences","strengths":[up to 3 short points: what works well (hook, format, offer, visuals)],"weaknesses":[up to 3 short points: what is missing or weak],"my_ideas":[3 concrete video ideas The Gardenian could post to compete — each one line with a hook]}`;
+  let r, basis='video';
+  try{ r=await geminiAgent([{file_data:{file_uri:'https://www.youtube.com/watch?v='+v.id}},{text:prompt}],{json:true}); }
+  catch(e){ basis='title'; r=await geminiAgent([{text:prompt+'\n(You cannot watch the video; judge from the title and description only.)'}],{json:true}); }
+  const d=r.data;
+  a.reports=[{id:Date.now(),videoId:v.id,channel:ch.title,title:v.title,date:v.date,basis,idea:d.idea||'',strengths:d.strengths||[],weaknesses:d.weaknesses||[],ideas:d.my_ideas||d.ideas||[],at:todayISO()},...a.reports.filter(x=>x.videoId!==v.id)].slice(0,40);
+  if(!ch.seen.includes(v.id)) ch.seen.push(v.id); ch.seen=ch.seen.slice(-60);
+  const vv=ch.videos.find(x=>x.id===v.id); if(vv) vv.isNew=false;
+  agSave();
+}
+async function compAction(fn){
+  const s=agState.comp; if(s.busy) return; s.busy=true; s.error=''; renderView();
+  try{ await fn(); }catch(e){ s.error=e.message; } finally{ s.busy=false; s.status=''; if(current==='agents') renderView(); }
+}
+function reportsCsv(){
+  const rows=[['Date analysed','Channel','Video','Link','Main idea','Strengths','Weaknesses','Ideas for us']];
+  AG().reports.forEach(r=>rows.push([r.at,r.channel,r.title,'https://youtu.be/'+r.videoId,r.idea,r.strengths.join(' | '),r.weaknesses.join(' | '),r.ideas.join(' | ')]));
+  return '﻿'+rows.map(r=>r.map(c=>'"'+String(c||'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+}
+function compHtml(){
+  const a=AG(), s=agState.comp, hasYt=!!store.get('ytKey','');
+  const newCount=a.channels.reduce((n,c)=>n+(c.videos||[]).filter(v=>v.isNew).length,0);
+  const dir=a.lang==='ar'?'rtl':'ltr';
+  return `<div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <div><h2>🎥 Competitor watch</h2><div class="count" style="margin-bottom:6px">${s.busy?escapeHtml(s.status||'Working…'):a.channels.length?a.channels.length+' channel'+(a.channels.length>1?'s':'')+' · '+newCount+' new video'+(newCount===1?'':'s'):'Watches competitor YouTube channels and analyses their new videos'}</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="filebtn" id="compCheck" style="border-style:solid" ${s.busy||!a.channels.length?'disabled':''}>Check for new videos</button>
+        <button class="addbtn" id="compAll" ${s.busy||!newCount?'disabled':''}>Analyse ${newCount||''} new</button></div>
+    </div>
+    ${s.error?`<p style="color:var(--clay);font-size:13px">${escapeHtml(s.error)}</p>`:''}
+    ${!hasYt?`<div class="count">One-time setup needed — see "Setup" at the bottom of this page.</div>`:''}
+    <form class="inline" id="compAdd"><input type="text" name="ch" placeholder="Paste a channel link, e.g. youtube.com/@CompanyName" ${!hasYt?'disabled':''}><button type="submit" ${s.busy||!hasYt?'disabled':''}>+ Watch</button></form>
+    ${a.channels.map((ch,ci)=>`<div style="border-top:1px solid var(--line);padding:10px 0">
+      <div style="display:flex;align-items:center;gap:8px">${ch.thumb?`<img src="${escapeHtml(ch.thumb)}" style="width:26px;height:26px;border-radius:50%">`:''}<b style="flex:1">${escapeHtml(ch.title)}</b>
+        <a class="del" href="https://www.youtube.com/channel/${escapeHtml(ch.id)}" target="_blank" rel="noopener">open</a><button class="del" data-chdel="${ci}">remove</button></div>
+      ${(ch.videos||[]).slice(0,4).map((v,vi)=>`<div style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:13px">
+        ${v.isNew?'<span class="tag high">NEW</span>':''}<a href="https://youtu.be/${escapeHtml(v.id)}" target="_blank" rel="noopener" style="color:var(--ink);flex:1">${escapeHtml(v.title)}</a>
+        <span class="meta">${fmtDate(v.date)}</span><button class="del" data-vid="${ci}:${vi}" style="text-decoration:underline" ${s.busy?'disabled':''}>analyse</button></div>`).join('')}
+    </div>`).join('')}
+  </div>
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <div><h2>📊 Competitor reports</h2><div class="count" style="margin-bottom:6px">${a.reports.length} report${a.reports.length===1?'':'s'} · download to open in Excel or Google Sheets</div></div>
+      ${a.reports.length?'<button class="filebtn" id="compCsv" style="border-style:solid">Download (.csv)</button>':''}</div>
+    ${a.reports.map((r,ri)=>`<details style="border-top:1px solid var(--line);padding:10px 0" ${ri===0?'open':''}><summary style="cursor:pointer"><b style="font-size:14px">${escapeHtml(r.title)}</b> <span style="color:var(--ink-soft);font-size:12px">· ${escapeHtml(r.channel)}${r.basis==='title'?' · from title only':''}</span></summary>
+      <div dir="${dir}" style="font-size:13.5px;margin-top:8px">
+        <div><b>💡</b> ${escapeHtml(r.idea)}</div>
+        <div style="margin-top:6px;color:var(--ok)"><b>✓</b> ${r.strengths.map(escapeHtml).join('<br>✓ ')}</div>
+        <div style="margin-top:6px;color:var(--clay)"><b>✗</b> ${r.weaknesses.map(escapeHtml).join('<br>✗ ')}</div>
+        <div style="margin-top:6px"><b>🎬</b> ${r.ideas.map(escapeHtml).join('<br>🎬 ')}</div></div>
+      <div style="margin-top:6px"><a class="del" href="https://youtu.be/${escapeHtml(r.videoId)}" target="_blank" rel="noopener" style="text-decoration:underline">Watch</a> · <button class="del" data-repnote="${ri}" style="text-decoration:underline">Save ideas to Notes</button> · <button class="del" data-repdel="${ri}">delete</button></div>
+    </details>`).join('')}
+    ${!a.reports.length?'<div class="empty">No reports yet — add a channel and tap “analyse”.</div>':''}
+  </div>`;
+}
+function bindComp(el){
+  const a=AG(), s=agState.comp;
+  const f=el.querySelector('#compAdd'); if(f) f.onsubmit=(e)=>{ e.preventDefault(); const v=new FormData(f).get('ch'); s.status='Finding the channel…'; compAction(()=>addChannel(String(v||''))); };
+  const c=el.querySelector('#compCheck'); if(c) c.onclick=()=>{ s.status='Checking channels…'; compAction(()=>checkChannels()); };
+  const all=el.querySelector('#compAll'); if(all) all.onclick=()=>compAction(async()=>{
+    const todo=[]; a.channels.forEach(ch=>(ch.videos||[]).filter(v=>v.isNew).forEach(v=>todo.push([ch,v])));
+    for(let i=0;i<todo.length;i++){ s.status=`Analysing video ${i+1} of ${todo.length}… (about a minute each)`; renderView(); await analyzeVideo(todo[i][0],todo[i][1]); }
+  });
+  el.querySelectorAll('[data-vid]').forEach(b=>b.onclick=()=>{ const [ci,vi]=b.dataset.vid.split(':').map(Number); const ch=a.channels[ci]; s.status='Watching and analysing the video… (about a minute)'; compAction(()=>analyzeVideo(ch,ch.videos[vi])); });
+  el.querySelectorAll('[data-chdel]').forEach(b=>b.onclick=()=>{ if(confirm('Stop watching this channel?')){ a.channels.splice(Number(b.dataset.chdel),1); agSave(); renderView(); } });
+  el.querySelectorAll('[data-repdel]').forEach(b=>b.onclick=()=>{ a.reports.splice(Number(b.dataset.repdel),1); agSave(); renderView(); });
+  el.querySelectorAll('[data-repnote]').forEach(b=>b.onclick=()=>{
+    const r=a.reports[Number(b.dataset.repnote)];
+    data.notes.unshift({id:Date.now(),title:'Video ideas — from '+r.channel,body:r.ideas.map(x=>'• '+x).join('\n')+'\n\nBased on: '+r.title+' (https://youtu.be/'+r.videoId+')',photo:''});
+    save('notes'); b.textContent='✓ Saved to Notes'; b.disabled=true;
+  });
+  const csv=el.querySelector('#compCsv'); if(csv) csv.onclick=()=>{ const x=document.createElement('a'); x.href='data:text/csv;charset=utf-8,'+encodeURIComponent(reportsCsv()); x.download='competitor-reports.csv'; x.click(); };
+}
+
+// ================= Agents page =================
+function renderAgents(el){
+  const a=AG();
+  const tabs=[['brief','☕ Morning brief'],['mail','📧 Email'],['comp','🎥 Competitors']];
+  el.innerHTML=`<div class="eyebrow">AI AGENTS</div><h1 class="title">Your AI team</h1><div class="sub">Three helpers that work for you: news every morning, your inbox sorted with replies drafted, and your competitors watched</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${tabs.map(([k,l])=>`<button data-agtab="${k}" style="border:1px solid var(--line);background:${agTab===k?'var(--forest)':'var(--paper)'};color:${agTab===k?'#fff':'var(--ink)'};border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600">${l}</button>`).join('')}
+      <select id="agLang" title="Language of the AI answers" style="margin-left:auto;padding:7px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)"><option value="ar" ${a.lang==='ar'?'selected':''}>العربية</option><option value="en" ${a.lang==='en'?'selected':''}>English</option></select></div>
+    ${agTab==='brief'?briefHtml(false)+`<div class="panel"><h2>Topics to follow</h2><div class="count">One topic per line. The brief picks the 3 most useful items across them.</div>
+        <textarea id="agTopics" rows="5" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">${escapeHtml(a.topics)}</textarea>
+        <button class="addbtn" id="agTopicsSave" style="margin-top:8px">Save topics</button> <span id="agTopicsMsg" style="font-size:12.5px"></span></div>`
+      :agTab==='mail'?mailHtml():compHtml()}
+    <details class="panel" ${(agTab==='mail'&&!store.get('gClientId',''))||(agTab==='comp'&&!store.get('ytKey',''))?'open':''}><summary style="cursor:pointer;font-weight:600">⚙ Setup (one time, on each device)</summary>
+      <div style="font-size:13.5px;margin-top:10px">
+        <p><b>Gemini key</b> (all agents): ${store.get('geminiKey','')?'✓ saved':'not set — add it in <button class="del" data-nav="settings" style="text-decoration:underline">Settings</button>'}</p>
+        <p style="margin-top:12px"><b>Google Client ID</b> (email secretary). In <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com?project=mohamad-daily-manager" target="_blank" rel="noopener" style="color:var(--sky)">Google Cloud</a> for project <i>mohamad-daily-manager</i>: 1) enable <b>Gmail API</b>; 2) <b>OAuth consent screen</b> → External, add your Gmail as a <b>test user</b>; 3) <b>Credentials → Create OAuth client ID → Web application</b>, add <code>https://moeaawad87-eng.github.io</code> under “Authorised JavaScript origins”; 4) paste the Client ID here. Google will show “app not verified” the first time — tap <i>Continue</i>, it is your own app.</p>
+        <div style="display:flex;gap:6px;margin-top:6px"><input id="gClientId" placeholder="xxxx.apps.googleusercontent.com" value="${escapeHtml(store.get('gClientId',''))}" style="flex:1;padding:8px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)"><button class="addbtn" id="gClientSave">Save</button></div>
+        <p style="margin-top:12px"><b>YouTube API key</b> (competitor watch). In the same Google Cloud project: enable <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com?project=mohamad-daily-manager" target="_blank" rel="noopener" style="color:var(--sky)">YouTube Data API v3</a>, then <b>Credentials → Create credentials → API key</b>, and paste it here. Free.</p>
+        <div style="display:flex;gap:6px;margin-top:6px"><input type="password" id="ytKey" placeholder="YouTube API key" value="${escapeHtml(store.get('ytKey',''))}" style="flex:1;padding:8px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)"><button class="addbtn" id="ytSave">Save</button></div>
+        <p style="margin-top:12px"><b>Email signature</b> (added to every reply draft, synced to all devices)</p>
+        <textarea id="agSig" rows="5" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">${escapeHtml(a.signature)}</textarea>
+        <button class="addbtn" id="agSigSave" style="margin-top:6px">Save signature</button> <span id="agSetupMsg" style="font-size:12.5px"></span>
+        <p style="margin-top:12px;color:var(--ink-soft);font-size:12.5px">Privacy: keys stay on this device. Emails are read straight from Gmail into this browser, sent to Google Gemini to sort and draft, and kept on this device only — never in the cloud database. Nothing is ever sent from your email; replies are saved as drafts for you to review.</p>
+      </div></details>`;
+  el.querySelectorAll('[data-agtab]').forEach(b=>b.onclick=()=>{ agTab=b.dataset.agtab; renderView(); });
+  el.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navigateTo(b.dataset.nav));
+  el.querySelector('#agLang').onchange=(e)=>{ a.lang=e.target.value; agSave(); };
+  const msg=t=>{ const m=el.querySelector('#agSetupMsg'); if(m) m.textContent=t; };
+  el.querySelector('#gClientSave').onclick=()=>{ store.set('gClientId',el.querySelector('#gClientId').value.trim()); gToken=null; renderView(); };
+  el.querySelector('#ytSave').onclick=()=>{ store.set('ytKey',el.querySelector('#ytKey').value.trim()); renderView(); };
+  el.querySelector('#agSigSave').onclick=()=>{ a.signature=el.querySelector('#agSig').value; agSave(); msg('✓ Saved'); };
+  if(agTab==='brief'){
+    bindBrief(el);
+    el.querySelector('#agTopicsSave').onclick=()=>{ a.topics=el.querySelector('#agTopics').value.trim(); agSave(); el.querySelector('#agTopicsMsg').textContent='✓ Saved — tap Refresh to use them'; };
+  }
+  if(agTab==='mail') bindMail(el);
+  if(agTab==='comp') bindComp(el);
 }
 
 document.getElementById('quickAddBtn').onclick=()=>{ navigateTo('tasks'); document.querySelector('#addForm input[type=text]')?.focus(); };
