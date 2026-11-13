@@ -525,7 +525,7 @@ function renderToday(el){
         <div class="qicon">${q.icon}</div><div class="qlabel">${q.label}</div>${q.count!==null?`<div class="qcount">${q.count}</div>`:''}
       </button>`).join('')}</div>
     ${aiPanelHtml()}
-    ${store.get('geminiKey','')?briefHtml(true):''}
+    ${briefHtml(true)}
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
       <div><div class="eyebrow">TODAY'S FOCUS</div>
       <h1 class="title" style="font-size:22px">Let's make today clear and productive</h1></div>
@@ -579,7 +579,7 @@ function renderToday(el){
     else if(which==='expenses'){ selectedStat=which; navigateTo('expenses'); }
   });
   bindAi(el);
-  bindBrief(el); setTimeout(maybeAutoBrief,0);
+  bindBrief(el);
   el.querySelectorAll('#aiPanel [data-nav]').forEach(b=>b.onclick=()=>navigateTo(b.dataset.nav));
 }
 
@@ -1492,52 +1492,45 @@ async function geminiAgent(parts,{search=false,json=true}={}){
 }
 
 // ================= 1) Morning brief =================
+// A GitHub Action (.github/workflows/morning-brief.yml) runs every morning at 06:17 Abu Dhabi time,
+// reads Google News for the topics in news-topics.txt, lets Gemini pick the top 3 and saves news.json.
+// The app just reads that file — so it works on every device without any key, even if the app was closed.
+const NEWS_URL='https://raw.githubusercontent.com/moeaawad87-eng/daily-manager/main/news.json';
+const NEWS_RUN_URL='https://github.com/moeaawad87-eng/daily-manager/actions/workflows/morning-brief.yml';
+const NEWS_TOPICS_URL='https://github.com/moeaawad87-eng/daily-manager/edit/main/news-topics.txt';
+let briefData=store.get('briefCache',null);
 async function runBrief(){
   const s=agState.brief; if(s.busy) return; s.busy=true; s.error=''; if(current==='agents'||current==='today') renderView();
-  const a=AG(); const t=todayISO();
-  const prompt=`${AG_BIZ}
-Today is ${t}. Search the web for the most recent news (prefer the last 3 days, never older than 2 weeks) on these topics:
-${a.topics}
-
-Pick the 3 items that matter most for his work and business plans. ${agLangLine()}
-Return ONLY JSON, no other text: {"items":[{"title":string,"summary":"2 short sentences","why":"1 sentence: why it matters for Mohamad / The Gardenian","source":"publication or site name","date":"YYYY-MM-DD or empty"}]}`;
   try{
-    const r=await geminiAgent([{text:prompt}],{search:true,json:true});
-    const items=(r.data.items||r.data||[]).slice(0,3);
-    if(!items.length) throw new Error('no news found');
-    a.brief={date:t,at:Date.now(),items,sources:r.sources.slice(0,8)}; agSave();
-  }catch(e){ s.error='Morning brief failed: '+e.message; }
-  finally{ s.busy=false; if(current==='agents'||current==='today') renderView(); }
+    let r; try{ r=await fetch(NEWS_URL+'?t='+Date.now(),{cache:'no-store'}); }catch(e){ r=null; }
+    if(!r||!r.ok) r=await fetch('news.json?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok) throw new Error(r.status===404?'no brief yet — the first one is made at 06:17 tomorrow (or tap “Make one now”)':'could not load ('+r.status+')');
+    briefData=await r.json(); store.set('briefCache',briefData);
+  }catch(e){ s.error='Morning brief: '+e.message; }
+  finally{ s.busy=false; s.loaded=true; if(current==='agents'||current==='today') renderView(); }
 }
-let briefAutoTried=false;
-function maybeAutoBrief(){
-  if(briefAutoTried || !store.get('geminiKey','')) return;
-  const b=AG().brief; if(b && b.date===todayISO()) return;
-  if(syncStatus==='checking'){ setTimeout(maybeAutoBrief,2000); return; } // wait for the cloud copy, so devices don't both run it
-  briefAutoTried=true; runBrief();
-}
+function maybeAutoBrief(){ if(!agState.brief.loaded && !agState.brief.busy) runBrief(); }
 function briefHtml(compact){
-  const a=AG(), b=a.brief, s=agState.brief, isToday=b&&b.date===todayISO();
-  const dir=a.lang==='ar'?'rtl':'ltr';
-  const items=b?b.items:[];
+  const a=AG(), b=briefData, s=agState.brief, isToday=b&&b.date===todayISO();
+  const L=a.lang==='ar'?'ar':'en', dir=L==='ar'?'rtl':'ltr';
+  const items=b?(b.items||[]):[];
   return `<div class="panel" id="briefPanel">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <div><h2>☕ Morning brief</h2><div class="count" style="margin-bottom:6px">${s.busy?'Searching the news… (up to a minute)':b?(isToday?'Today':'Last updated '+fmtDate(b.date))+' · top 3 for your work':'3 news items that matter for your work, every morning'}</div></div>
-      <div style="display:flex;gap:6px">${compact?`<button class="filebtn" data-nav="agents" style="border-style:solid">All agents</button>`:''}<button class="addbtn" id="briefRun" ${s.busy?'disabled':''}>${s.busy?'Working…':isToday?'Refresh':'Get today\'s brief'}</button></div>
+      <div><h2>☕ Morning brief</h2><div class="count" style="margin-bottom:6px">${s.busy?'Loading…':b?(isToday?'Today':'From '+fmtDate(b.date))+' · top 3 for your work · ready every day at 6:17 am':'3 news items that matter for your work, ready every day at 6:17 am'}</div></div>
+      <div style="display:flex;gap:6px">${compact?`<button class="filebtn" data-nav="agents" style="border-style:solid">All agents</button>`:''}<button class="addbtn" id="briefRun" ${s.busy?'disabled':''}>↻</button></div>
     </div>
     ${s.error?`<p style="color:var(--clay);font-size:13px">${escapeHtml(s.error)}</p>`:''}
-    ${!store.get('geminiKey','')?`<div class="count">Needs your free Gemini key. <button class="del" data-nav="settings" style="text-decoration:underline">Open Settings</button></div>`:''}
-    <div dir="${dir}">${items.map((it,i)=>`<div class="row" style="flex-direction:column;gap:2px">
-      <b>${i+1}. ${escapeHtml(it.title||'')}</b>
-      <div style="font-size:13.5px">${escapeHtml(it.summary||'')}</div>
-      ${it.why?`<div style="font-size:13px;color:var(--ok)">💡 ${escapeHtml(it.why)}</div>`:''}
-      <div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(it.source||'')}${it.date?' · '+escapeHtml(it.date):''}</div>
-    </div>`).join('')}</div>
-    ${b&&b.sources&&b.sources.length&&!compact?`<div style="font-size:12px;color:var(--ink-soft);margin-top:8px">Sources: ${b.sources.map(x=>`<a href="${escapeHtml(x.uri)}" target="_blank" rel="noopener" style="color:var(--sky)">${escapeHtml(x.title||'link')}</a>`).join(' · ')}</div>`:''}
+    <div dir="${dir}">${items.map((it,i)=>{ const t=it[L]||it.en||{}; return `<div class="row" style="flex-direction:column;gap:2px">
+      <b>${i+1}. ${escapeHtml(t.title||'')}</b>
+      <div style="font-size:13.5px">${escapeHtml(t.summary||'')}</div>
+      ${t.why?`<div style="font-size:13px;color:var(--ok)">💡 ${escapeHtml(t.why)}</div>`:''}
+      <div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(it.source||'')}${it.link?` · <a href="${escapeHtml(it.link)}" target="_blank" rel="noopener" style="color:var(--sky)">${L==='ar'?'اقرأ الخبر':'Read'}</a>`:''}</div>
+    </div>`; }).join('')}</div>
   </div>`;
 }
 function bindBrief(el){
   const b=el.querySelector('#briefRun'); if(b) b.onclick=()=>runBrief();
+  setTimeout(maybeAutoBrief,0);
   el.querySelectorAll('#briefPanel [data-nav]').forEach(x=>x.onclick=()=>navigateTo(x.dataset.nav));
 }
 
@@ -1797,9 +1790,10 @@ function renderAgents(el){
   el.innerHTML=`<div class="eyebrow">AI AGENTS</div><h1 class="title">Your AI team</h1><div class="sub">Three helpers that work for you: news every morning, your inbox sorted with replies drafted, and your competitors watched</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${tabs.map(([k,l])=>`<button data-agtab="${k}" style="border:1px solid var(--line);background:${agTab===k?'var(--forest)':'var(--paper)'};color:${agTab===k?'#fff':'var(--ink)'};border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600">${l}</button>`).join('')}
       <select id="agLang" title="Language of the AI answers" style="margin-left:auto;padding:7px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)"><option value="ar" ${a.lang==='ar'?'selected':''}>العربية</option><option value="en" ${a.lang==='en'?'selected':''}>English</option></select></div>
-    ${agTab==='brief'?briefHtml(false)+`<div class="panel"><h2>Topics to follow</h2><div class="count">One topic per line. The brief picks the 3 most useful items across them.</div>
-        <textarea id="agTopics" rows="5" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">${escapeHtml(a.topics)}</textarea>
-        <button class="addbtn" id="agTopicsSave" style="margin-top:8px">Save topics</button> <span id="agTopicsMsg" style="font-size:12.5px"></span></div>`
+    ${agTab==='brief'?briefHtml(false)+`<div class="panel"><h2>Topics to follow</h2><div class="count">The brief searches Google News for these every morning and picks the 3 most useful items.</div>
+        <div style="font-size:13.5px">${((briefData&&briefData.topics)||[]).map(t=>'• '+escapeHtml(t)).join('<br>')||'—'}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><a class="filebtn" href="${NEWS_TOPICS_URL}" target="_blank" rel="noopener" style="border-style:solid;text-decoration:none">✎ Edit topics</a><a class="filebtn" href="${NEWS_RUN_URL}" target="_blank" rel="noopener" style="border-style:solid;text-decoration:none">▶ Make one now</a></div>
+        <div class="count" style="margin-top:8px">“Make one now” opens GitHub → tap <b>Run workflow</b>. About a minute later tap ↻ here.</div></div>`
       :agTab==='mail'?mailHtml():compHtml()}
     <details class="panel" ${(agTab==='mail'&&!store.get('gClientId',''))||(agTab==='comp'&&!store.get('ytKey',''))?'open':''}><summary style="cursor:pointer;font-weight:600">⚙ Setup (one time, on each device)</summary>
       <div style="font-size:13.5px;margin-top:10px">
@@ -1822,7 +1816,6 @@ function renderAgents(el){
   el.querySelector('#agSigSave').onclick=()=>{ a.signature=el.querySelector('#agSig').value; agSave(); msg('✓ Saved'); };
   if(agTab==='brief'){
     bindBrief(el);
-    el.querySelector('#agTopicsSave').onclick=()=>{ a.topics=el.querySelector('#agTopics').value.trim(); agSave(); el.querySelector('#agTopicsMsg').textContent='✓ Saved — tap Refresh to use them'; };
   }
   if(agTab==='mail') bindMail(el);
   if(agTab==='comp') bindComp(el);
