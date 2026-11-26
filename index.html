@@ -526,6 +526,7 @@ function renderToday(el){
       </button>`).join('')}</div>
     ${aiPanelHtml()}
     ${briefHtml(true)}
+    ${anthropicHtml()}
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
       <div><div class="eyebrow">TODAY'S FOCUS</div>
       <h1 class="title" style="font-size:22px">Let's make today clear and productive</h1></div>
@@ -1528,6 +1529,28 @@ function briefHtml(compact){
     </div>`; }).join('')}</div>
   </div>`;
 }
+// Anthropic news widget — official posts (anthropic.com / claude.com) + new Claude features in the press.
+// Filled by the same morning GitHub Action, saved in news.json as "anthropic" and "claude".
+function anthropicHtml(){
+  const b=briefData, L=AG().lang==='ar'?'ar':'en', dir=L==='ar'?'rtl':'ltr', ar=L==='ar';
+  const off=b&&Array.isArray(b.anthropic)?b.anthropic:[], cl=b&&Array.isArray(b.claude)?b.claude:[];
+  const link=u=>u?` · <a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="color:var(--sky)">${ar?'اقرأ':'Read'}</a>`:'';
+  const empty=!b?(ar?'يظهر بعد أول موجز صباحي.':'Appears after the first morning brief.'):(ar?'لا جديد خلال آخر 14 يوماً.':'Nothing new in the last 14 days.');
+  return `<div class="panel" id="anthropicPanel">
+    <h2>🤖 ${ar?'أخبار Anthropic و Claude':'Anthropic & Claude news'}</h2>
+    <div class="count" style="margin-bottom:6px">${ar?'كل التحديثات الرسمية + الميزات الجديدة · يتحدث كل صباح':'Every official update + new features · refreshed every morning'}</div>
+    <div dir="${dir}">
+      ${cl.map(it=>{ const t=it[L]||it.en||{}; return `<div class="row" style="flex-direction:column;gap:2px">
+        <b>✨ ${escapeHtml(t.title||'')}</b>
+        <div style="font-size:13.5px">${escapeHtml(t.summary||'')}</div>
+        ${t.why?`<div style="font-size:13px;color:var(--ok)">💡 ${escapeHtml(t.why)}</div>`:''}
+        <div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(it.source||'')}${link(it.link)}</div></div>`; }).join('')}
+      ${off.length?`<div style="font-size:12px;font-weight:700;color:var(--ink-soft);margin:8px 0 2px">${ar?'من Anthropic مباشرة':'Official from Anthropic'}</div>`+off.map(it=>`<div class="row" style="flex-direction:column;gap:1px">
+        <div style="font-size:13.5px">• ${escapeHtml((ar&&it.ar)||it.en||'')}</div>
+        <div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(it.date||'')}${link(it.link)}</div></div>`).join(''):''}
+      ${!cl.length&&!off.length?`<div style="font-size:13.5px;color:var(--ink-soft)">${empty}</div>`:''}
+    </div></div>`;
+}
 function bindBrief(el){
   const b=el.querySelector('#briefRun'); if(b) b.onclick=()=>runBrief();
   setTimeout(maybeAutoBrief,0);
@@ -1790,7 +1813,7 @@ function renderAgents(el){
   el.innerHTML=`<div class="eyebrow">AI AGENTS</div><h1 class="title">Your AI team</h1><div class="sub">Three helpers that work for you: news every morning, your inbox sorted with replies drafted, and your competitors watched</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${tabs.map(([k,l])=>`<button data-agtab="${k}" style="border:1px solid var(--line);background:${agTab===k?'var(--forest)':'var(--paper)'};color:${agTab===k?'#fff':'var(--ink)'};border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600">${l}</button>`).join('')}
       <select id="agLang" title="Language of the AI answers" style="margin-left:auto;padding:7px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)"><option value="ar" ${a.lang==='ar'?'selected':''}>العربية</option><option value="en" ${a.lang==='en'?'selected':''}>English</option></select></div>
-    ${agTab==='brief'?briefHtml(false)+`<div class="panel"><h2>Topics to follow</h2><div class="count">The brief searches Google News for these every morning and picks the 3 most useful items.</div>
+    ${agTab==='brief'?briefHtml(false)+anthropicHtml()+`<div class="panel"><h2>Topics to follow</h2><div class="count">The brief searches Google News for these every morning and picks the 3 most useful items.</div>
         <div style="font-size:13.5px">${((briefData&&briefData.topics)||[]).map(t=>'• '+escapeHtml(t)).join('<br>')||'—'}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><a class="filebtn" href="${NEWS_TOPICS_URL}" target="_blank" rel="noopener" style="border-style:solid;text-decoration:none">✎ Edit topics</a><a class="filebtn" href="${NEWS_RUN_URL}" target="_blank" rel="noopener" style="border-style:solid;text-decoration:none">▶ Make one now</a></div>
         <div class="count" style="margin-top:8px">“Make one now” opens GitHub → tap <b>Run workflow</b>. About a minute later tap ↻ here.</div></div>`
