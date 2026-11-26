@@ -1,23 +1,29 @@
 """Morning brief: reads Google News for each topic in news-topics.txt,
 asks Gemini (free tier, no search grounding needed) to pick the 3 items
 that matter most, and writes news.json for the app to show."""
-import json, os, re, sys, time, urllib.parse, urllib.request
+import json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+KEY = os.environ.get("GEMINI_API_KEY", "").strip().strip('"').strip("'").strip()
 if not KEY:
     sys.exit("GEMINI_API_KEY secret is missing")
 UA = {"User-Agent": "Mozilla/5.0 (daily-manager morning brief)"}
 
 def get(url, data=None, headers=None):
     req = urllib.request.Request(url, data=data, headers={**UA, **(headers or {})})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return r.read()
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:  # show Google's reason (never the key) in the log
+        body = e.read().decode("utf-8", "ignore")[:400]
+        print("HTTP", e.code, "from", url.split("?")[0], "-", body.replace(KEY, "***") if KEY else body)
+        raise
 
 topics = [l.strip() for l in open("news-topics.txt", encoding="utf-8") if l.strip() and not l.startswith("#")]
 items, seen = [], set()
 for t in topics:
+    time.sleep(2)  # Google News answers 429 if asked too fast
     q = urllib.parse.quote(t + " when:3d")
     try:
         root = ET.fromstring(get(f"https://news.google.com/rss/search?q={q}&hl=en-AE&gl=AE&ceid=AE:en"))
@@ -82,6 +88,7 @@ def claude_news():
     qs = ["Anthropic Claude new feature", "Anthropic announces Claude", "Claude AI update"]
     heads, seen2 = [], set()
     for t in qs:
+        time.sleep(2)
         try:
             root = ET.fromstring(get("https://news.google.com/rss/search?q=" + urllib.parse.quote(t + " when:7d") + "&hl=en-US&gl=US&ceid=US:en"))
         except Exception as e:
