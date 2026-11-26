@@ -120,6 +120,40 @@ The "ar" texts are the same content in clear, simple Modern Standard Arabic. Do 
         out2.append({"en": pk.get("en", {}), "ar": pk.get("ar", {}), "source": h["source"], "link": h["link"], "date": h["date"]})
     return out2
 
+# ---------- Anthropic official updates: every post on anthropic.com / claude.com in the last 14 days ----------
+def anthropic_official():
+    q = urllib.parse.quote("(site:anthropic.com OR site:claude.com) when:14d")
+    root = ET.fromstring(get(f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"))
+    rows, seen3 = [], set()
+    for it in root.iter("item"):
+        title = re.sub(r"\s+[-|\u2013]\s+(Anthropic|Claude|claude\.com|anthropic\.com)$", "", (it.findtext("title") or "").strip())
+        key = re.sub(r"\W+", "", title.lower())[:60]
+        if not title or key in seen3: continue
+        seen3.add(key)
+        rows.append({"en": title, "ar": "", "date": (it.findtext("pubDate") or "")[:16], "link": it.findtext("link") or ""})
+        if len(rows) >= 10: break
+    print(len(rows), "official Anthropic posts")
+    if rows:  # Arabic titles; if this fails we keep English only
+        try:
+            pr = ("Translate each English title to short, clear Modern Standard Arabic. Keep product names (Claude, Anthropic, Opus, Sonnet, Haiku) in English. "
+                  'Return ONLY JSON {"ar":["...", ...]} in the same order: ' + json.dumps([r["en"] for r in rows], ensure_ascii=False))
+            bb = json.dumps({"contents": [{"parts": [{"text": pr}]}],
+                             "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}}).encode()
+            oo = json.loads(get(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={KEY}",
+                                data=bb, headers={"Content-Type": "application/json"}))
+            tt = "".join(x.get("text", "") for x in oo["candidates"][0]["content"]["parts"])
+            for r, a in zip(rows, json.loads(re.search(r"\{[\s\S]*\}", tt).group(0)).get("ar", [])):
+                r["ar"] = str(a)
+        except Exception as e:
+            print("translate failed:", e)
+    return rows
+
+try:
+    result["anthropic"] = anthropic_official()
+except Exception as e:
+    print("Anthropic official failed:", e)
+    result["anthropic"] = []
+
 try:
     result["claude"] = claude_news()
 except Exception as e:  # never let this break the main brief
