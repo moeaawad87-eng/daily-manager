@@ -77,5 +77,54 @@ for p in picks:
     src = items[int(p["n"])] if 0 <= int(p["n"]) < len(items) else {}
     result["items"].append({"en": p.get("en", {}), "ar": p.get("ar", {}),
                             "source": src.get("source", ""), "link": src.get("link", ""), "date": src.get("date", "")})
+# ---------- Claude news channel: new Claude / Anthropic features, explained for Mohamad ----------
+def claude_news():
+    qs = ["Anthropic Claude new feature", "Anthropic announces Claude", "Claude AI update"]
+    heads, seen2 = [], set()
+    for t in qs:
+        try:
+            root = ET.fromstring(get("https://news.google.com/rss/search?q=" + urllib.parse.quote(t + " when:7d") + "&hl=en-US&gl=US&ceid=US:en"))
+        except Exception as e:
+            print("skip claude query", t, e); continue
+        for it in root.iter("item"):
+            title = (it.findtext("title") or "").strip()
+            key = re.sub(r"\W+", "", title.lower())[:60]
+            if not title or key in seen2: continue
+            seen2.add(key)
+            heads.append({"n": len(heads), "title": title, "source": (it.findtext("source") or "").strip(),
+                          "date": (it.findtext("pubDate") or "")[:16], "link": it.findtext("link") or ""})
+            if len(heads) >= 40: break
+    print(len(heads), "Claude headlines")
+    if not heads: return []
+    p2 = f"""Mohamad uses Claude (the AI assistant by Anthropic) every day for his landscaping sales work in Abu Dhabi
+(quotations, BOQs, reports, emails, small apps). He wants to hear about NEW Claude features and changes as soon as they come out.
+Headlines from the last 7 days (JSON): {json.dumps([{k: x[k] for k in ('n','title','source','date')} for x in heads], ensure_ascii=False)}
+
+Pick up to 3 headlines that announce a real NEW Claude feature, model, product or important change from Anthropic.
+Skip opinion pieces, stock/funding news, lawsuits and old features. If nothing is truly new, return an empty list.
+Return ONLY JSON:
+{{"picks":[{{"n":number,
+  "en":{{"title":"short clear title","summary":"1-2 short sentences on what is new, based only on the headline","why":"1 sentence: how Mohamad could use it in his work"}},
+  "ar":{{"title":"...","summary":"...","why":"..."}} }}]}}
+The "ar" texts are the same content in clear, simple Modern Standard Arabic. Do not invent facts that are not in the headline."""
+    b2 = json.dumps({"contents": [{"parts": [{"text": p2}]}],
+                     "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"}}).encode()
+    o2 = json.loads(get(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={KEY}",
+                        data=b2, headers={"Content-Type": "application/json"}))
+    t2 = "".join(x.get("text", "") for x in o2["candidates"][0]["content"]["parts"])
+    out2 = []
+    for pk in json.loads(re.search(r"\{[\s\S]*\}", t2).group(0)).get("picks", [])[:3]:
+        n = int(pk.get("n", -1))
+        if not 0 <= n < len(heads): continue
+        h = heads[n]
+        out2.append({"en": pk.get("en", {}), "ar": pk.get("ar", {}), "source": h["source"], "link": h["link"], "date": h["date"]})
+    return out2
+
+try:
+    result["claude"] = claude_news()
+except Exception as e:  # never let this break the main brief
+    print("Claude news failed:", e)
+    result["claude"] = []
+
 json.dump(result, open("news.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 print(json.dumps(result, ensure_ascii=False)[:600])

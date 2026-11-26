@@ -1526,6 +1526,22 @@ function briefHtml(compact){
       ${t.why?`<div style="font-size:13px;color:var(--ok)">💡 ${escapeHtml(t.why)}</div>`:''}
       <div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(it.source||'')}${it.link?` · <a href="${escapeHtml(it.link)}" target="_blank" rel="noopener" style="color:var(--sky)">${L==='ar'?'اقرأ الخبر':'Read'}</a>`:''}</div>
     </div>`; }).join('')}</div>
+    ${claudeNewsHtml(b,L,dir,compact)}
+  </div>`;
+}
+// Claude news channel — new Claude / Anthropic features, filled by the same morning GitHub Action
+function claudeNewsHtml(b,L,dir,compact){
+  const cl=b&&Array.isArray(b.claude)?b.claude:null;
+  if(!cl || (compact && !cl.length)) return '';
+  return `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)">
+    <h2 style="font-size:16px">🤖 ${L==='ar'?'جديد Claude':'Claude news'}</h2>
+    <div class="count" style="margin-bottom:6px">${L==='ar'?'ميزات وتحديثات جديدة من Anthropic خلال آخر 7 أيام':'New Claude features and updates from Anthropic, last 7 days'}</div>
+    <div dir="${dir}">${cl.length?cl.map(it=>{ const t=it[L]||it.en||{}; return `<div class="row" style="flex-direction:column;gap:2px">
+      <b>• ${escapeHtml(t.title||'')}</b>
+      <div style="font-size:13.5px">${escapeHtml(t.summary||'')}</div>
+      ${t.why?`<div style="font-size:13px;color:var(--ok)">💡 ${escapeHtml(t.why)}</div>`:''}
+      <div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(it.source||'')}${it.link?` · <a href="${escapeHtml(it.link)}" target="_blank" rel="noopener" style="color:var(--sky)">${L==='ar'?'اقرأ الخبر':'Read'}</a>`:''}</div>
+    </div>`; }).join(''):`<div style="font-size:13.5px;color:var(--ink-soft)">${L==='ar'?'لا جديد هذا الأسبوع.':'Nothing new this week.'}</div>`}</div>
   </div>`;
 }
 function bindBrief(el){
